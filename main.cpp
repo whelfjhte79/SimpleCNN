@@ -2,6 +2,8 @@
 #include<opencv2/core.hpp>
 #include<iostream>
 #include"SimpleCNN.h"
+#include"kernel.cuh"
+
 
 
 using namespace cv;
@@ -14,6 +16,38 @@ using namespace cnn;
 // 메인부분
 #if !defined(TEST) && !defined(TEST2)
 
+int sum_int(int a, int b);
+int sum_int(int a, int b) {
+	int c;
+	c = a + b;
+	return c;
+}
+
+
+
+#ifdef __CUDACC__
+int main() {
+	cout << "테스트";
+	return 0;
+}
+
+#else
+int main(void) {
+	int a = 7, b = 5, c, d;
+	
+	c = sum_int(7, 5);
+	GPU_TEST gpu_test;
+	gpu_test.sum_cuda(a, b, &d);
+	
+	printf_s("CPU : %d + %d = %d  \n",a,b,c);
+	printf_s("GPU : %d + %d = %d  \n",a,b,d);
+
+
+	return 0;
+}
+#endif
+
+/*
 int main(void) {
 
 	Directory* dirent = new Directory("C:\\Users\\이상민\\source\\repos\\SimpleCNN_image\\SimpleCNN_image",img_read::FILENAME_EXTENSION::JPG);
@@ -50,7 +84,7 @@ int main(void) {
 	
 
 	return 0;
-}
+}*/
 #endif
 #ifdef TEST
 #include"test.h"

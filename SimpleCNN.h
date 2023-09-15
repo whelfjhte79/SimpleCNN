@@ -148,7 +148,7 @@ namespace cnn {
 
 	
 	};
-	
+	/*
 	void printVecSize(V4D data) {
 		cout << data.size() << " ";
 		cout << data[0].size() << " ";
@@ -222,7 +222,7 @@ namespace cnn {
 		}
 		data->clear();
 		delete data;
-	}
+	}*/
 	class Activation : public Layer {
 	private:
 	public:
@@ -814,11 +814,11 @@ namespace cnn {
 			V2D fully = V2D(data.size());
 
 			
-			/*
-			data크기: 2 128
-			output크기: 2 4
-			-->weight크기: 2 128 4
-			*/
+			
+			//data크기: 2 128
+			//output크기: 2 4
+			//-->weight크기: 2 128 4
+			
 			(*this->weight3D).resize(data.size());
 			for (int i = 0; i < data.size(); i++) {
 				(*this->weight3D)[i].resize(data[i].size());
@@ -931,19 +931,19 @@ namespace cnn {
 		}
 		~CNN() {}
 		// split train test 담을 배열 정하기. V4D
-		/*
-		void splitTrainTest(double rate = 0.3) {
-			int cnt = 0;
-			for (int i = 0; i < this->image.size(); i++) {
-				if (static_cast<int>(static_cast<double>(this->image.size()) * rate) > cnt++) this->testImage.push_back(this->image.at(i));
-				else this->trainImage.push_back(this->image.at(i));
-			}
-			cnt = 0;
-			for (int i = 0; i < static_cast<int>(static_cast<double>(this->label.size()) * rate); i++) {
-				if (static_cast<int>(static_cast<double>(this->label.size()) * rate) > cnt++) this->testLabel.push_back(this->label.at(i));
-				else this->trainLabel.push_back(this->Label.at(i));
-			}
-		}*/
+		
+		//void splitTrainTest(double rate = 0.3) {
+		//	int cnt = 0;
+		//	for (int i = 0; i < this->image.size(); i++) {
+		//		if (static_cast<int>(static_cast<double>(this->image.size()) * rate) > cnt++) this->testImage.push_back(this->image.at(i));
+		//		else this->trainImage.push_back(this->image.at(i));
+		//	}
+		//	cnt = 0;
+		//	for (int i = 0; i < static_cast<int>(static_cast<double>(this->label.size()) * rate); i++) {
+		//		if (static_cast<int>(static_cast<double>(this->label.size()) * rate) > cnt++) this->testLabel.push_back(this->label.at(i));
+		//		else this->trainLabel.push_back(this->Label.at(i));
+		//	}
+		//}
 
 
 		//V4D& getX
@@ -996,11 +996,11 @@ namespace cnn {
 
 
 				//if (epochsCount != 0 && epochs % epochsCount == 0) {
-				/*if(i == epochs-1) {
-					cout << "\noutput: ";
-					printTestV2D(this->output, "");
-					cout << "\n";
-				}*/
+				//if(i == epochs-1) {
+				//	cout << "\noutput: ";
+				//	printTestV2D(this->output, "");
+				//	cout << "\n";
+				//}
 
 			}
 		}
@@ -1276,18 +1276,18 @@ namespace cnn {
 				}
 			}
 
-			/*
-			else if (opt == OPTIMIZER::Momentum)
-				break;
-			else if (opt == OPTIMIZER::Adagrad)
-				break;
-			else if (opt == OPTIMIZER::RMSProp)
-				break;
-			else if (opt == OPTIMIZER::Adam)
-				break;
-			else if (opt == OPTIMIZER::Nadam)
-				break;
-				*/
+			
+			//else if (opt == OPTIMIZER::Momentum)
+			//	break;
+			//else if (opt == OPTIMIZER::Adagrad)
+			//	break;
+			//else if (opt == OPTIMIZER::RMSProp)
+			//	break;
+			//else if (opt == OPTIMIZER::Adam)
+			//	break;
+			//else if (opt == OPTIMIZER::Nadam)
+			//	break;
+			//	
 			//
 			//if(opt == OPTIMIZER::SGD)
 			
@@ -1353,39 +1353,6 @@ namespace cnn {
 				*deLoss = deSparseCategoricalCrossEntropy;
 
 			return deLoss;
-			/* 
-			float rmse = lossFunc(output, label, LOSS::RMSE);
-			
-			float deMSE = 0.0f;
-			float deMSE_re = derivativeLoss(output,label,LOSS::MSE);
-			float deRMSE = 0.5f * deMSE_re * (1.0f / rmse);
-			float deCrossEntropyLoss = 0.0f;
-			float deBinCrossEntropyLoss = 0.0f;
-
-			int cnt = 0;
-			for (int i = 0; i < (*output).size(); i++) {
-				for (int j = 0; j < (*output)[i].size(); j++) {
-					deMSE += 2 * ((*output)[i][j] - (*label)[i][j]);
-					deBinCrossEntropyLoss += (-(*label)[i][j] / (*output)[i][j]) + ((1.0f - (*label)[i][j]) / (1.0f - (*output)[i][j]));
-					deCrossEntropyLoss += 1.0f / (*output)[i][j] - (*label)[i][j] / (*output)[i][j];
-					cnt++;
-				}
-			}
-			deMSE /= (float)cnt;
-			deBinCrossEntropyLoss /= (float)cnt;
-			deCrossEntropyLoss /= (float)cnt;
-
-			if (LOSS::MSE)
-				derivativeLoss = deMSE;
-			else if (LOSS::RMSE)
-				derivativeLoss = deRMSE;
-			else if (LOSS::BinaryCrossentropy)
-				derivativeLoss = deBinCrossEntropyLoss;
-			else if (LOSS::CategoricalCrossentropy || LOSS::SparseCategoricalCrossentropy)
-				derivativeLoss = deCrossEntropyLoss;
-
-			return derivativeLoss;
-			*/
 
 		}
 
