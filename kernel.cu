@@ -1,4 +1,5 @@
 
+/*
 #include"kernel.cuh"
 
 
@@ -39,7 +40,7 @@ int GPU_TEST::sum_cuda(int a, int b, int* c) {
 }
 
 
-
+*/
 
 
 

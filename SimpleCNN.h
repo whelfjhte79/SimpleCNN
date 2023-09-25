@@ -45,8 +45,10 @@
 #include<algorithm>
 #include"ImageRead.h"
 #include <random>
+#include"kernel.cuh"
 using namespace cv;
 using namespace std;
+
 
 namespace cnn {
 	using V1D = std::vector<float>;
@@ -257,7 +259,11 @@ namespace cnn {
 	};
 
 	
-	class Activation : public Layer {
+	class Activation : public Layer
+#ifdef _CUDA_GPU_
+		, ActivationGPU
+#endif //_CUDA_GPU_
+	{
 	private:
 	public:
 		Activation() {
@@ -333,8 +339,15 @@ namespace cnn {
 			}
 			return result4D;
 		}
+#ifdef _CUDA_GPU_
+		//int testConv() { return 1; }
+#endif //_CUDA_GPU_
 	};
-	class Padding : public Layer {
+	class Padding : public Layer 
+#ifdef _CUDA_GPU_
+		, PaddingGPU
+#endif //_CUDA_GPU_
+	{
 	private:
 		V4D* delta = nullptr;
 	public:
@@ -409,9 +422,15 @@ namespace cnn {
 
 			return calDelta;
 		}
-
+#ifdef _CUDA_GPU_
+		//int testConv() { return 1; }
+#endif //_CUDA_GPU_
 	};
-	class Conv : public Layer {
+	class Conv : public Layer 
+#ifdef _CUDA_GPU_
+		, ConvGPU
+#endif //_CUDA_GPU_
+	{
 	private:
 		V3D* filter3D = nullptr;
 		
@@ -551,9 +570,18 @@ namespace cnn {
 			
 			
 		}
+#ifdef _CUDA_GPU_
+		int testConv() { return 1; }
+
+
+#endif //_CUDA_GPU_
 	};
 
-	class Pooling : public Layer {
+	class Pooling : public Layer 
+#ifdef _CUDA_GPU_
+		, PoolingGPU
+#endif //_CUDA_GPU_
+	{
 	private:
 		
 		V4D pool;
@@ -687,10 +715,17 @@ namespace cnn {
 
 			return output;
 		}
+#ifdef _CUDA_GPU_
+		
+#endif //_CUDA_GPU_
 	};
 
 	// ¿Ï¼º
-	class Flatten : public Layer {
+	class Flatten : public Layer 
+#ifdef _CUDA_GPU_
+		, FlattenGPU
+#endif //_CUDA_GPU_
+	{
 	private:
 		V4D savedFlattenSize;
 		V4D* delta = nullptr;
@@ -730,11 +765,18 @@ namespace cnn {
 			}
 			return flat;
 		}
-		
+
+#ifdef _CUDA_GPU_
+
+#endif //_CUDA_GPU_
 	};
 
 	
-	class FullyConnected : public Layer {
+	class FullyConnected : public Layer 
+#ifdef _CUDA_GPU_
+		,FullyConnectedGPU
+#endif
+	{
 	private:
 		vector<V2D> saveWeight1D;
 		
@@ -815,6 +857,9 @@ namespace cnn {
 
 			return fully;
 		}
+#ifdef _CUDA_GPU_
+
+#endif //_CUDA_GPU_
 	}; 
 	class Optimizer {
 	private:

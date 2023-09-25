@@ -1,13 +1,22 @@
 #include<opencv2/opencv.hpp>
 #include<opencv2/core.hpp>
 #include<iostream>
+
+#define _CUDA_GPU_ // GPU 사용
 #include"SimpleCNN.h"
+
+#ifdef _CUDA_GPU_
 #include"kernel.cuh"
+#endif //__CUDACC__
 
 using namespace cv;
 using namespace std;
 using namespace img_read;
 using namespace cnn;
+
+
+
+
 
 //#include"test.h"
 //#define __CUDACC__
@@ -47,6 +56,22 @@ int main(void) {
 #endif
 */
 
+#ifdef _CUDA_GPU_
+int main(void) {
+	std::cout << "테스트";
+
+	ActivationGPU a;
+	std::cout<< a.test() <<"\n";
+	cnn::Conv conv;
+
+	cout << conv.testConv();
+
+	return 0;
+}
+
+
+#else
+
 int main(void) {
 
 	Directory* dirent = new Directory("C:\\Users\\이상민\\source\\repos\\SimpleCNN_image\\SimpleCNN_image",img_read::FILENAME_EXTENSION::JPG);
@@ -85,7 +110,7 @@ int main(void) {
 
 	return 0;
 }
-//#endif
+#endif
 #ifdef TEST
 #include"test.h"
 /*
