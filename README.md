@@ -29,7 +29,13 @@ Here's a simple example of how to use SimpleCNN to create and train a CNN model 
 #include <opencv2/opencv.hpp>
 #include <opencv2/core.hpp>
 #include <iostream>
+
+#define _CUDA_GPU_ // // Enable GPU usage.
 #include "SimpleCNN.h"
+
+#ifdef _CUDA_GPU_
+#include "kernel.cuh"
+#endif //__CUDACC__
 
 using namespace cv;
 using namespace std;
