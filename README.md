@@ -45,17 +45,18 @@ int main(void) {
     CNN* cnn = new CNN(dirent->getImageSet(), label->getLabel());
     
     // Add layers to the model
+    cnn->add(new Conv(3, 3, 1, 1, ACTIVATION::TanH));
+    cnn->add(new Pooling(POOLING::Max));
+    cnn->add(new Padding(1));
     cnn->add(new Conv(3, 3, 1, 1, ACTIVATION::ReLU));
-	  cnn->add(new Pooling(POOLING::Max));
-	  cnn->add(new Padding(1));
-	  cnn->add(new Conv(3, 3, 1, 1, ACTIVATION::ReLU));
- 	  cnn->add(new Pooling(POOLING::Max));
-	  cnn->add(new Padding(1));
-	  cnn->add(new Pooling(POOLING::Max));
-	  cnn->add(new Flatten());
-	  cnn->add(new FullyConnected(256, ACTIVATION::ReLU));
-	  cnn->add(new FullyConnected(128, ACTIVATION::ReLU));
-	  cnn->add(new FullyConnected(64, ACTIVATION::ReLU));
+    cnn->add(new Pooling(POOLING::Average));
+    cnn->add(new Padding(1));
+    cnn->add(new Pooling(POOLING::Min));
+    cnn->add(new Flatten());
+    cnn->add(new FullyConnected(256, ACTIVATION::Maxout));
+    cnn->add(new FullyConnected(128, ACTIVATION::Sigmoid));
+    cnn->add(new FullyConnected(64, ACTIVATION::ReLU));
+    cnn->add(new FullyConnected(10, ACTIVATION::Softmax));
     // Add more layers as needed
     
     // Compile the model
