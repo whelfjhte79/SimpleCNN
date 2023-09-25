@@ -4,6 +4,8 @@
 #include<iostream>
 #include"SimpleCNN.h"
 
+
+
 #ifdef __cplusplus 
 
 extern "C" {//<-- extern 시작
@@ -31,5 +33,4 @@ extern "C" {//<-- extern 시작
 }
 
 #endif
-
 

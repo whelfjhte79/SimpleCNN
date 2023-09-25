@@ -70,6 +70,93 @@ namespace cnn {
 	enum class LOSS {
 		MSE, RMSE, BinaryCrossentropy, CategoricalCrossentropy, SparseCategoricalCrossentropy
 	};
+
+	class PrintTest {
+	private:
+	public:
+		void printVec2DSize(V4D data, std::string error_name) {
+			cout << error_name << "\n";
+			int cnt = 0;
+			for (int i = 0; i < data.size(); i++) {
+				cnt += data[i].size();
+			}
+			cnt += data.size();
+			cout << "전체크기: " << cnt << "\n";
+		}
+		void printVec3DSize(V3D data, std::string error_name) {
+			cout << error_name << "\n";
+			int cnt = 0;
+			for (int i = 0; i < data.size(); i++) {
+				for (int j = 0; j < data[i].size(); j++) {
+					cnt += data[i][j].size();
+				}
+				cnt += data[i].size();
+			}
+			cnt += data.size();
+			cout << "전체크기: " << cnt << "\n";
+		}
+		void printVec4DSize(V4D data, std::string error_name) {
+			cout << error_name << "\n";
+			int cnt = 0;
+			for (int i = 0; i < data.size(); i++) {
+				for (int j = 0; j < data[i].size(); j++) {
+					for (int k = 0; k < data[i][j].size(); k++) {
+						cnt+=data[i][j][k].size();
+					}
+					cnt += data[i][j].size();
+				}
+				cnt += data[i].size();
+			}
+			cnt += data.size();
+			cout << "전체크기: " << cnt<<"\n";
+		}
+		void printTestV4D(V4D data, std::string error_name) {
+			cout << error_name << "\n";
+			for (int i = 0; i < data.size(); i++) {
+				for (int j = 0; j < data[i].size(); j++) {
+					for (int k = 0; k < data[i][j].size(); k++) {
+						for (int l = 0; l < data[i][j][k].size(); l++) {
+							cout << fixed;
+							cout.precision(4);
+							cout << data[i][j][k][l] << " ";
+						}
+						cout << "\n";
+					}
+					cout << "\n";
+				}
+				cout << "\n";
+			}
+			cout << "출력테스트V4D 끝\n";
+		}
+		void printTestV3D(V3D data, std::string error_name) {
+			cout << error_name << "\n";
+			for (int i = 0; i < data.size(); i++) {
+				for (int j = 0; j < data[i].size(); j++) {
+					for (int k = 0; k < data[i][j].size(); k++) {
+						cout << fixed;
+						cout.precision(4);
+						cout << data[i][j][k] << " ";
+					}
+					cout << "\n";
+				}
+				cout << "\n";
+			}
+			cout << "출력테스트V3D 끝\n";
+		}
+		void printTestV2D(V2D data, std::string error_name) {
+			cout << error_name << "\n";
+			for (int i = 0; i < data.size(); i++) {
+				for (int j = 0; j < data[i].size(); j++) {
+					cout << fixed;
+					cout.precision(4);
+					cout << data[i][j] << " ";
+				}
+				cout << "\n";
+			}
+			cout << "출력테스트V2D 끝\n";
+		}
+	};
+
 	class RandomGen {
 	private:
 		std::random_device rd;
@@ -145,84 +232,31 @@ namespace cnn {
 		virtual V2D* backward(V2D* delta) { return dummy2D; }
 		virtual V4D* backward(V4D* delta) { return dummy4D; }
 
+		void deleteV4D(V4D* data) {
+			for (auto& d3d : *data) {
+				for (auto& d2d : d3d) {
+					for (auto& d1d : d2d) {
+						d1d.clear();
+					}
+					d2d.clear();
+				}
+				d3d.clear();
+			}
+			data->clear();
+			delete data;
+		}
+		void deleteV2D(V2D* data) {
+			for (auto& d1d : *data) {
+				d1d.clear();
+			}
+			data->clear();
+			delete data;
+		}
+
+		PrintTest printTest;
+	};
 
 	
-	};
-	/*
-	void printVecSize(V4D data) {
-		cout << data.size() << " ";
-		cout << data[0].size() << " ";
-		cout << data[0][0].size() << " ";
-		cout << data[0][0][0].size() << "\n";
-	}
-	void printTestV4D(V4D data, std::string error_name) {
-		cout << error_name << "\n";
-		for (int i = 0; i < data.size(); i++) {
-			for (int j = 0; j < data[i].size(); j++) {
-				for (int k = 0; k < data[i][j].size(); k++) {
-					for (int l = 0; l < data[i][j][k].size(); l++) {
-						//cout << 1.0f / (1.0f + std::pow(std::exp(1.0f), -data[i][j][k][l])) << " ";
-						cout << fixed;
-						cout.precision(2);
-						cout << data[i][j][k][l] << " ";
-						//cout<< ((data[i][j][k][l] >= 0.5f) ? 1 : 0) << " ";
-					}
-					cout << "\n";
-				}
-				cout << "\n";
-			}
-			cout << "\n";
-		}
-		cout << "출력테스트V4D 끝\n";
-	}
-	void printTestV3D(V3D data, std::string error_name) {
-		cout << error_name << "\n";
-		for (int i = 0; i < data.size(); i++) {
-			for (int j = 0; j < data[i].size(); j++) {
-				for (int k = 0; k < data[i][j].size(); k++) {
-					cout << fixed;
-					cout.precision(2);
-					cout << data[i][j][k] << " ";
-				}
-				cout << "\n";
-			}
-			cout << "\n";
-		}
-		cout << "출력테스트V3D 끝\n";
-	}
-	void printTestV2D(V2D data, std::string error_name) {
-		cout << error_name <<"\n";
-		for (int i = 0; i < data.size(); i++) {
-			for (int j = 0; j < data[i].size(); j++) {
-				cout << fixed;
-				cout.precision(2);
-				cout << data[i][j] << " ";
-			}
-			cout << "\n";
-		}
-		cout << "출력테스트V2D 끝\n";
-	}
-	
-	void deleteV4D(V4D* data) {
-		for (auto& d3d : *data) {
-			for (auto& d2d : d3d) {
-				for (auto& d1d : d2d) {
-					d1d.clear();
-				}
-				d2d.clear();
-			}
-			d3d.clear();
-		}
-		data->clear();
-		delete data;
-	}
-	void deleteV2D(V2D* data) {
-		for (auto& d1d : *data) {
-			d1d.clear();
-		}
-		data->clear();
-		delete data;
-	}*/
 	class Activation : public Layer {
 	private:
 	public:
@@ -355,18 +389,13 @@ namespace cnn {
 				}
 			}
 
-
 			return actMap4D;
 		}
 		virtual V4D* backward(V4D* delta) override {
-			//Padding의 역전파는 다음 층에서 가져온 델타에 패딩만 추가해서 이전 층으로 보냄
-			// 아님. 그럼 크기가안맞음
-			// 오히려 패딩만큼 제거해야됨
+			// 패딩만큼 제거해야됨
 
-
-			V4D* calDelta = new V4D((*delta).size());
+			V4D* calDelta = new V4D((*delta));
 			for (int i = 0; i < (*delta).size(); i++) {
-				(*calDelta)[i].resize((*delta)[i].size());
 				for (int j = 0; j < (*delta)[i].size(); j++) {
 					(*calDelta)[i][j].resize((*delta)[i][j].size() - (this->paddingSize * 2));
 					for (int k = 0; k < (*delta)[i][j].size() - (this->paddingSize * 2); k++) {
@@ -385,16 +414,16 @@ namespace cnn {
 	class Conv : public Layer {
 	private:
 		V3D* filter3D = nullptr;
-		//V3D filter3D;
+		
 		int stride;
 		int outputZ;
 		int outputY;
 		int outputX;
 		V4D actMap4D;
 		V4D saveData4DSize;
-		//V4D* actMap4D = nullptr;
+		
 		V4D* delta = nullptr;
-		//Padding* convPadding = nullptr;
+		
 		Activation* activation = nullptr;
 		RandomGen* randVal = new RandomGen(-0.1f, 0.1f);
 		bool initialized = false;
@@ -449,10 +478,7 @@ namespace cnn {
 			this->delta = delta;
 		}
 		virtual V4D calculate(V4D data) override {
-			//V4D actMap4D = V4D(data.size());
-			actMap4D = V4D(data.size());
-
-			saveData4DSize = data;
+			V4D actMap4D = V4D(data.size());
 
 			for (int i = 0; i < data.size(); i++) {
 				actMap4D[i].resize(data[i].size() * (*filter3D).size());
@@ -484,16 +510,6 @@ namespace cnn {
 			return actMap4D;
 		}
 		virtual V4D* backward(V4D* delta) override {
-			// 역전된 필터와 delta의 합성곱
-			// 그러나 최종결과 크기가 맞는지 미리 계산되어있어야하고 계산 후에도 확인해야함.
-
-			// 목표
-			// delta : 2 27 368 280
-			// -> 2 9 370 282 로 변경해야함.
-			// 근데 27에서 9로 그냥 바꿀수있는건 아님
-			// x y 값이 바뀌기 때문에 
-			// 전체 크기를 알고있어야함
-
 			
 			V4D saveDelta = saveData4DSize;
 
@@ -505,24 +521,16 @@ namespace cnn {
 			delete padding;
 			V4D calDelta = this->calculate(temp);
 
-			
-			// 2 x y z
-			V4D* result = new V4D(saveDelta.size());
-			for (int i = 0; i < saveDelta.size(); i++) {
-				(*result)[i].resize(saveDelta[i].size());
-				for (int j = 0; j < saveDelta[i].size(); j++) {
-					(*result)[i][j].resize(saveDelta[i][j].size());
-					for (int m = 0; m < calDelta[i].size(); m++) {
-						for (int k = 0; k < saveDelta[i][j].size(); k++) {
-							(*result)[i][j][k].resize(saveDelta[i][j][k].size());
-							for (int l = 0; l < saveDelta[i][j][k].size(); l++) {
+
+			V4D* result = new V4D(saveDelta);
+			for (int i = 0; i < saveDelta.size(); i++) 
+				for (int j = 0; j < saveDelta[i].size(); j++) 
+					for (int m = 0; m < calDelta[i].size(); m++) 
+						for (int k = 0; k < saveDelta[i][j].size(); k++) 
+							for (int l = 0; l < saveDelta[i][j][k].size(); l++) 
 								(*result)[i][j][k][l] += calDelta[i][m][k][l];
-							}
-						}
-					}
-				}
-			}
-			
+
+
 			//다시 필터 원래대로
 			reverseFilter(this->filter3D);
 
@@ -571,94 +579,67 @@ namespace cnn {
 			this->delta = delta;
 		}
 		virtual V4D calculate(V4D data) override {
-
-			maxPoolCoord.resize(data.size());
-			for (int i = 0; i < data.size(); i++) {
-				maxPoolCoord[i].resize(data[i].size());
-				
-				for (int j = 0; j < data[i].size(); j++) {
-					maxPoolCoord[i][j].resize(data[i][j].size());
-					for (int k = 0; k < data[i][j].size(); k++) {
-						maxPoolCoord[i][j][k].resize(data[i][j][k].size());
-						for (int l = 0; l < data[i][j][k].size(); l++) {
+			maxPoolCoord = data;
+			for (int i = 0; i < data.size(); i++) 
+				for (int j = 0; j < data[i].size(); j++) 
+					for (int k = 0; k < data[i][j].size(); k++) 
+						for (int l = 0; l < data[i][j][k].size(); l++) 
 							maxPoolCoord[i][j][k][l] = 0.0f;
-						}
-					}
-				}
-			}
-
 
 			minPoolCoord = maxPoolCoord;
 			avgPoolCoord = maxPoolCoord;
 
-			V4D actMap4D = V4D(data.size());
-			if (poolingName == POOLING::Max) {
-				for (int i = 0; i < data.size(); i++) {
-					actMap4D[i].resize(data[i].size());
-					for (int j = 0; j < data[i].size(); j++) {
-						actMap4D[i][j].resize(data[i][j].size() / 2);
-						for (int k = 0; k < data[i][j].size() / 2; k++) {
-							actMap4D[i][j][k].resize(data[i][j][k].size() / 2);
-							for (int l = 0; l < data[i][j][k].size() / 2; l++) {
-								float maxValue = max(max(max(data[i][j][2 * k][2 * l], data[i][j][2 * k][2 * l + 1]), data[i][j][2 * k + 1][2 * l]), data[i][j][2 * k + 1][2 * l + 1]);
-								actMap4D[i][j][k][l] = maxValue;
-								if (maxValue == data[i][j][2 * k][2 * l]) this->maxPoolCoord[i][j][2 * k][2 * l] = 1.0f;
-								else if (maxValue == data[i][j][2 * k][2 * l + 1]) this->maxPoolCoord[i][j][2 * k][2 * l + 1] = 1.0f;
-								else if (maxValue == data[i][j][2 * k + 1][2 * l]) this->maxPoolCoord[i][j][2 * k + 1][2 * l] = 1.0f;
-								else if (maxValue == data[i][j][2 * k + 1][2 * l + 1]) this->maxPoolCoord[i][j][2 * k + 1][2 * l + 1] = 1.0f;
-								else { cout << "Pooling Block에러"; }
-								
-							}
-						}
+			V4D actMap4D = V4D(data);
+			V4D maxActMap4D = actMap4D;
+			V4D minActMap4D = actMap4D;
+			V4D avgActMap4D = actMap4D;
+			
+			for (int i = 0; i < data.size(); i++) {
+				for (int j = 0; j < data[i].size(); j++) {
+					actMap4D[i][j].resize(data[i][j].size() / 2);
+					maxActMap4D[i][j].resize(data[i][j].size() / 2);
+					minActMap4D[i][j].resize(data[i][j].size() / 2);
+					avgActMap4D[i][j].resize(data[i][j].size() / 2);
+					for (int k = 0; k < data[i][j].size() / 2; k++) {
+						actMap4D[i][j][k].resize(data[i][j][k].size() / 2);
+						maxActMap4D[i][j][k].resize(data[i][j][k].size() / 2);
+						minActMap4D[i][j][k].resize(data[i][j][k].size() / 2);
+						avgActMap4D[i][j][k].resize(data[i][j][k].size() / 2);
+						for (int l = 0; l < data[i][j][k].size() / 2; l++) {
+							float maxValue = max(max(max(data[i][j][2 * k][2 * l], data[i][j][2 * k][2 * l + 1]), data[i][j][2 * k + 1][2 * l]), data[i][j][2 * k + 1][2 * l + 1]);
+							float minValue = min(min(min(data[i][j][2 * k][2 * l], data[i][j][2 * k][2 * l + 1]), data[i][j][2 * k + 1][2 * l]), data[i][j][2 * k + 1][2 * l + 1]);
+							maxActMap4D[i][j][k][l] = maxValue;
+							minActMap4D[i][j][k][l] = minValue;
+							avgActMap4D[i][j][k][l] = (data[i][j][2 * k][2 * l] + data[i][j][2 * k][2 * l + 1] + data[i][j][2 * k + 1][2 * l] + data[i][j][2 * k + 1][2 * l + 1]) / 4.0f;
+							if (maxValue == data[i][j][2 * k][2 * l]) this->maxPoolCoord[i][j][2 * k][2 * l] = 1.0f;
+							else if (maxValue == data[i][j][2 * k][2 * l + 1]) this->maxPoolCoord[i][j][2 * k][2 * l + 1] = 1.0f;
+							else if (maxValue == data[i][j][2 * k + 1][2 * l]) this->maxPoolCoord[i][j][2 * k + 1][2 * l] = 1.0f;
+							else if (maxValue == data[i][j][2 * k + 1][2 * l + 1]) this->maxPoolCoord[i][j][2 * k + 1][2 * l + 1] = 1.0f;
+							if (minValue == data[i][j][2 * k][2 * l]) this->minPoolCoord[i][j][2 * k][2 * l] = 1.0f;
+							else if (minValue == data[i][j][2 * k][2 * l + 1]) this->minPoolCoord[i][j][2 * k][2 * l + 1] = 1.0f;
+							else if (minValue == data[i][j][2 * k + 1][2 * l]) this->minPoolCoord[i][j][2 * k + 1][2 * l] = 1.0f;
+							else if (minValue == data[i][j][2 * k + 1][2 * l + 1]) this->minPoolCoord[i][j][2 * k + 1][2 * l + 1] = 1.0f;
 
+						}
 					}
 
 				}
-			}
-			else if (poolingName == POOLING::Min) {
-				for (int i = 0; i < data.size(); i++) {
-					actMap4D[i].resize(data[i].size());
-					for (int j = 0; j < data[i].size(); j++) {
-						actMap4D[i][j].resize(data[i][j].size() / 2);
-						for (int k = 0; k < data[i][j].size() / 2; k++) {
-							actMap4D[i][j][k].resize(data[i][j][k].size() / 2);
-							for (int l = 0; l < data[i][j][k].size() / 2; l++) {
-								float minValue = min(min(min(data[i][j][2 * k][2 * l], data[i][j][2 * k][2 * l + 1]), data[i][j][2 * k + 1][2 * l]), data[i][j][2 * k + 1][2 * l + 1]);
-								actMap4D[i][j][k][l] = minValue;
-								if (minValue == data[i][j][2 * k][2 * l]) this->minPoolCoord[i][j][2 * k][2 * l] = 1.0f;
-								else if (minValue == data[i][j][2 * k][2 * l + 1]) this->minPoolCoord[i][j][2 * k][2 * l + 1] = 1.0f;
-								else if (minValue == data[i][j][2 * k + 1][2 * l]) this->minPoolCoord[i][j][2 * k + 1][2 * l] = 1.0f;
-								else if (minValue == data[i][j][2 * k + 1][2 * l + 1]) this->minPoolCoord[i][j][2 * k + 1][2 * l + 1] = 1.0f;
 
-							}
-						}
-					}
-				}
 			}
-			else if (poolingName == POOLING::Average) {
-				for (int i = 0; i < data.size(); i++) {
-					actMap4D[i].resize(data[i].size());
-					for (int j = 0; j < data[i].size(); j++) {
-						actMap4D[i][j].resize(data[i][j].size() / 2);
-						for (int k = 0; k < data[i][j].size() / 2; k++) {
-							actMap4D[i][j][k].resize(data[i][j][k].size() / 2);
-							for (int l = 0; l < data[i][j][k].size() / 2; l++) {
-								actMap4D[i][j][k][l] = (data[i][j][2 * k][2 * l] + data[i][j][2 * k][2 * l + 1] + data[i][j][2 * k + 1][2 * l] + data[i][j][2 * k + 1][2 * l + 1]) / 4.0f;
-							}
-						}
-					}
-				}
-			}
-
+			
+			if (poolingName == POOLING::Max) 
+				actMap4D = maxActMap4D;
+			else if (poolingName == POOLING::Min) 
+				actMap4D = minActMap4D;
+			else if (poolingName == POOLING::Average) 
+				actMap4D = avgActMap4D;
+			else 
+				cout << "Pooling Name 에러";
 
 			return actMap4D;
 
 		}
 		virtual V4D* backward(V4D* delta) override {
-
-			// delta 크기보다 maxPoolCoord 가 크기가 큰데
-			// 어떻게 사이즈 맞출지 고민해야함.
-			// 1대1 비율이 아니라 maxPoolCoord를 바로 못씀.
 
 			V4D poolCoord;
 			if (this->poolingName == POOLING::Max) {
@@ -669,36 +650,25 @@ namespace cnn {
 				pool = expandDelta(delta, this->minPoolCoord);
 				poolCoord = this->minPoolCoord;
 			}
+			else if (this->poolingName == POOLING::Average) {
+				pool = expandDelta(delta, this->avgPoolCoord);
+				V4D* copyPool = new V4D(pool);
+				return copyPool;
+			}
 			for (int i = 0; i < pool.size(); i++) {
 				for (int j = 0; j < pool[i].size(); j++) {
 					for (int k = 0; k < pool[i][j].size(); k++) {
 						for (int l = 0; l < pool[i][j][k].size(); l++) {
 							pool[i][j][k][l] *= poolCoord[i][j][k][l];
-							// min, avg도 똑같으니 걍 poolCoord변수에 합칠것.
 						}
 					}
 				}
 			}
-			V4D* copyPool = new V4D(pool.size());
-			for (int i = 0; i < pool.size(); i++) {
-				(*copyPool)[i].resize(pool[i].size());
-				for (int j = 0; j < pool[i].size(); j++) {
-					(*copyPool)[i][j].resize(pool[i][j].size());
-					for (int k = 0; k < pool[i][j].size(); k++) {
-						(*copyPool)[i][j][k].resize(pool[i][j][k].size());
-						for (int l = 0; l < pool[i][j][k].size(); l++) {
-							(*copyPool)[i][j][k][l] = pool[i][j][k][l];
-						}
-					}
-				}
-			}
+			V4D* copyPool = new V4D(pool);
 			
 			return copyPool;
 		}
 		V4D expandDelta(V4D* delta, V4D poolCoord) {
-			// delta = 2 3 92 70
-			// 2x2크기로 값은 그대로 2 3 194 140 로 변경해야함
-			
 			V4D output = poolCoord;
 			
 			for (int i = 0; i < (*delta).size(); i++) {
@@ -762,12 +732,15 @@ namespace cnn {
 		}
 		
 	};
+
+	
 	class FullyConnected : public Layer {
 	private:
 		vector<V2D> saveWeight1D;
 		
 		V2D* weight2D = nullptr;
 		V3D* weight3D = new V3D();
+		
 		V1D* result = nullptr;
 		RandomGen* randomGen = new RandomGen(-1.0, 1.0);
 		bool initialized = false;
@@ -813,12 +786,11 @@ namespace cnn {
 		V2D calculate(V2D data) override {
 			V2D fully = V2D(data.size());
 
-			
-			
 			//data크기: 2 128
 			//output크기: 2 4
 			//-->weight크기: 2 128 4
 			
+		
 			(*this->weight3D).resize(data.size());
 			for (int i = 0; i < data.size(); i++) {
 				(*this->weight3D)[i].resize(data[i].size());
@@ -826,7 +798,7 @@ namespace cnn {
 					(*this->weight3D)[i][j].resize(this->denseSize);
 				}
 			}
-
+			
 			randomGen->randGen(*this->weight3D, initialized);
 			initialized = true;
 
@@ -834,7 +806,6 @@ namespace cnn {
 				for (int j = 0; j < (*this->weight3D)[i][0].size(); j++) {
 					float sum = 0.0;
 					for (int k = 0; k < data[i].size(); k++) {
-						
 						sum += data[i][k] * (*this->weight3D)[i][k][j];
 					}
 					fully[i].push_back(sum);
@@ -842,13 +813,64 @@ namespace cnn {
 			}
 			fully = (*this->activation).calculate2D(fully);
 
-
 			return fully;
-
 		}
-		
 	}; 
+	class Optimizer {
+	private:
+		OPTIMIZER opt;
+	public:
+		Optimizer(){
+			opt = OPTIMIZER::Mini_SGD;
+		}
+		Optimizer(OPTIMIZER opt) {
+			this->opt = opt;
+		}
+		float miniSGD(const float learningRate, float weight, float gradient) {
+			weight -= learningRate * gradient;
+			return weight;
+		}
+		float momentum(const float learningRate, float weight, float gradient, const float beta = 0.9f) {
+			float velocity = 0.0f;
+			velocity = beta * velocity + (1.0f - beta) * gradient;
+			weight -= learningRate * velocity;
+			return weight;
+		}
+		float adagrad(const float learningRate, float weight, float gradient) {
+			float epsilon = 1e-7;
+			float squaredGradient = gradient * gradient;
+			weight -= (learningRate / (sqrt(squaredGradient) + epsilon)) * gradient;
+			return weight;
+		}
+		float rmsProp(const float learningRate, float weight, float gradient, const float beta = 0.9f){
+			float epsilon = 1e-7;
+			float squaredGradient = beta * squaredGradient + (1.0f - beta) * (gradient * gradient);
+			weight -= (learningRate / (sqrt(squaredGradient) + epsilon)) * gradient;
+			return weight;
+		}
+		float adam(const float learningRate, float weight, float gradient, float& m, float& v, int epoch, const float beta1 = 0.9f, const float beta2 = 0.999f){
+			float epsilon = 1e-7;
+			
+			m = beta1 * m + (1.0f - beta1) * gradient;
+			v = beta2 * v + (1.0f - beta2) * (gradient * gradient);
 
+			float m_hat = m / (1.0f - pow(beta1, epoch));
+			float v_hat = v / (1.0f - pow(beta2, epoch));
+			weight -= (learningRate / (sqrt(v_hat) + epsilon)) * m_hat;
+			return weight;
+		}
+		float nadam(const float learningRate, float weight, float gradient, float& m, float& v, int epoch, const float beta1 = 0.9f, const float beta2 = 0.999f) {
+			const float epsilon = 1e-7;
+
+			m = beta1 * m + (1.0f - beta1) * gradient;
+			v = beta2 * v + (1.0f - beta2) * (gradient * gradient);
+			
+			float m_hat = m / (1.0f - pow(beta1, epoch));
+			float v_hat = v / (1.0f - pow(beta2, epoch));
+			weight -= (learningRate / (sqrt(v_hat) + epsilon)) * (m_hat + beta1 * m_hat);
+			return weight;
+		}
+	};
 	class CNN {
 	private:
 		V5D imageSet;
@@ -872,12 +894,12 @@ namespace cnn {
 		vector<Layer*> layers;
 
 
-		float leaningRate;
+		float learningRate;
 
 		unsigned int epochsCount = 10;
 		int batchSize;
-
-		OPTIMIZER optimizer;
+		Optimizer* optimizer = new Optimizer();
+		OPTIMIZER optimizerType;
 		LOSS loss;
 		void setLayer() {
 
@@ -945,8 +967,6 @@ namespace cnn {
 		//	}
 		//}
 
-
-		//V4D& getX
 		void normalization(V4D& image) {
 			for (int i = 0; i < image.size(); ++i)
 				for (int j = 0; j < image[i].size(); ++j)
@@ -969,10 +989,10 @@ namespace cnn {
 			this->layers.push_back(layer);
 		}
 
-		void compile(OPTIMIZER optimizer, LOSS loss) {
-			this->optimizer = optimizer;
+		void compile(OPTIMIZER optimizerType, LOSS loss) {
+			this->optimizerType = optimizerType;
 			this->loss = loss;
-			this->leaningRate = 0.0001f;
+			this->learningRate = 0.0001f;
 		}
 		void fit(int epochs, int batchSize) {
 			if (batchSize <= 0) batchSize = 1;
@@ -980,12 +1000,9 @@ namespace cnn {
 			this->imageSet = this->batchImage(this->image, batchSize);
 			this->labelSet2D = this->batchLabel(this->label1D, batchSize);
 			
-
-
 			for (int i = 0; i < epochs; i++) {
 				cout << "\nepochs:" << i+1 << "\n";
-				
-				
+
 				for (int j = 0; j < this->imageSet.size(); ++j) {		
 					this->layers[0]->setData(this->imageSet[j]);
 					this->target1D = this->labelSet2D[j];
@@ -993,14 +1010,6 @@ namespace cnn {
 					this->feedforward(batchSize);
 					this->backward(batchSize);
 				}
-
-
-				//if (epochsCount != 0 && epochs % epochsCount == 0) {
-				//if(i == epochs-1) {
-				//	cout << "\noutput: ";
-				//	printTestV2D(this->output, "");
-				//	cout << "\n";
-				//}
 
 			}
 		}
@@ -1026,8 +1035,6 @@ namespace cnn {
 				cout << y[i] << " ";
 			}
 			
-
-
 
 			cout << "\n";
 			cout << "\n";
@@ -1065,14 +1072,10 @@ namespace cnn {
 					V2D data = this->layers[i]->getData2D();
 					this->output = this->layers[i]->calculate(data);
 
-
-
 				}
 				else if (this->layers[i]->getLayerType() == LAYER::Act || this->layers[i]->getLayerType() == LAYER::Pool || this->layers[i]->getLayerType() == LAYER::Padding) {
-					V4D data = this->layers[i]->getData4D();
-					
+					V4D data = this->layers[i]->getData4D();	
 					this->layers[i + 1]->setData(this->layers[i]->calculate(data));
-
 
 				}
 				else if (this->layers[i]->getLayerType() == LAYER::Flatten) {
@@ -1097,28 +1100,22 @@ namespace cnn {
 		
 		void backward(int batchSize) {
 
-
 			for (int j = (int)this->layers.size() - 1; j >= 0; --j) {
 				
 				if (this->layers[j]->getLayerType() == LAYER::Conv) {
-
 					V4D* delta = this->layers[j + 1]->getDelta4D();
 					this->layers[j]->setDelta4D(this->layers[j]->backward(delta));
 				}
 				else if (j == this->layers.size() - 1 && this->layers[j]->getLayerType() == LAYER::FC) {
 					// 출력층 FC
-					if (loss == LOSS::SparseCategoricalCrossentropy) {
+					if (loss == LOSS::SparseCategoricalCrossentropy) 
 						this->target = this->oneHotEncoding(this->target1D, (int)this->output[0].size());						
-					}
-					else if (loss == LOSS::BinaryCrossentropy) {
+					else if (loss == LOSS::BinaryCrossentropy) 
 						this->target = this->oneHotEncoding(this->target1D, 2);
-					}
-					else {
+					else 
 						this->target = this->oneHotEncoding(this->target1D, (int)this->output[0].size());		
-					}
-
+					
 					float lossValue = this->lossFunc(&this->target, &this->output, this->loss);
-
 
 					V2D* dLossdOutput = this->derivativeLoss(&this->output, &this->target, this->loss);
 					V2D* dOutputdAct = this->derivativeAct(dLossdOutput, this->layers[j]->getActivationType());
@@ -1134,21 +1131,8 @@ namespace cnn {
 
 					V2D data = this->layers[j]->getData2D();
 	
-					this->layers[j]->setWeight3D(updateWeightsFC(this->layers[j]->getWeight3D(), deltaFC, &data, this->optimizer));
+					this->layers[j]->setWeight3D(updateWeightsFC(this->layers[j]->getWeight3D(), deltaFC, &data, this->optimizerType));
 					this->layers[j]->setDelta2D(deltaFC);
-
-					// delta = dLossdOutput * dOutputdAct
-					// weight[i][j] = weight[i][j] - rate * delta[i] * a[j]
-					// w11 = w11 - rate * delta1(3) * a1(2)
-					// w12 = w12 - rate * delta1(3) * a2(2)
-					// w21 = w21 - rate * delta2(3) * a1(2)
-					// w22 = w22 - rate * delta2(3) * a2(2)
-					//this->updateWeights()
-					//dLossdOutput* dOutputdAct* dActdW;
-					// dLoss * dAct * dW 연산하고 역으로 연결하는과정
-						
-					//gradients += outputGradients * outputWeights * derivativeFunction(weights);
-					
 
 				}
 				else if (this->layers[j]->getLayerType() == LAYER::Padding) {
@@ -1158,84 +1142,34 @@ namespace cnn {
 				}
 
 				else if (this->layers[j]->getLayerType() == LAYER::Pool) {
-					
-					
-					//delta = 2 3 97 70.  pooling 미적용임.
 					V4D* delta = this->layers[j + 1]->getDelta4D();
-					
-
-	
-					//순전파 data = 2 3 184 140. maxPoolCoord에 좌표는 있긴있음
-					//어떻게 크기맞추고 위치맞출지 고민해야함.
-					//V4D test = this->layers[j]->getData4D();
-
-
-					// 1. 순전파에서 MaxPool이면 Max 위치에 1, 나머지 0인 4D 벡터 만들고,
-					// 1-1. AvgPool이면 2x2 위치마다 평균값 내서 4D 벡터 만들고
-					// 2. delta랑 곱셈시키기
-					// 3. 나온값을 setDelta4D에 넣기.
 					this->layers[j]->setDelta4D(this->layers[j]->backward(delta));
 				}
 
 				else if (this->layers[j]->getLayerType() == LAYER::Flatten) {
 					
-
-					// 2차원을 4차원으로 변경하는 코드
-					
-					
-					
 					V4D data4D = this->layers[j]->getData4D();
 					V2D* curDelta = deltaXweights(this->layers[j + 1]->getDelta2D(), this->layers[j + 1]->getWeight3D());
-					// dXw 연산 후에 weight j + 1가 미리 업데이트되있는지 아니면 해야하는지 확인하기.
-
 					
-					
-					// 2 19320
-					
-					// 2 3 97 70
-
-					
-					V2D* delta2D = new V2D((*curDelta).size());
-					
-					for (int i = 0; i < (*delta2D).size(); i++) {
-						(*delta2D)[i].resize((*curDelta)[i].size(), 0.0f);
-						for (int k = 0; k < (*delta2D)[i].size(); k++) {
+					V2D* delta2D = new V2D((*curDelta));
+					for (int i = 0; i < (*delta2D).size(); i++) 
+						for (int k = 0; k < (*delta2D)[i].size(); k++) 
 							(*delta2D)[i][k] = (*curDelta)[i][k] * this->layers[j + 1]->getData2D()[i][k];
-						}
-					}
-					//delta2D = 2 19320
-					//2 19320 -> 2 3 97 70
-
+						
 					
-					V4D* delta4D = new V4D(data4D.size());
+					V4D* delta4D = new V4D(data4D);
 					for (int i = 0; i < data4D.size(); i++) {
-						(*delta4D)[i].resize(data4D[i].size());
 						int idx = 0;
-						for (int j = 0; j < data4D[i].size(); j++) {
-							(*delta4D)[i][j].resize(data4D[i][j].size());
-							for (int k = 0; k < data4D[i][j].size(); k++) {
-								(*delta4D)[i][j][k].resize(data4D[i][j][k].size());
-								for (int l = 0; l < data4D[i][j][k].size(); l++) {								
-									(*delta4D)[i][j][k][l] = (*delta2D)[i][idx];
-									
-									idx++;
-								}
-							}
-						}
+						for (int j = 0; j < data4D[i].size(); j++) 
+							for (int k = 0; k < data4D[i][j].size(); k++) 
+								for (int l = 0; l < data4D[i][j][k].size(); l++) 								
+									(*delta4D)[i][j][k][l] = (*delta2D)[i][idx++];
 					}
 					
 					this->layers[j]->setDelta4D(delta4D);
 					
 				}
 				else if (this->layers[j]->getLayerType() == LAYER::FC) {
-					
-
-					//delta(벡터임.) 값은 공용으로 저장되어있어야함.
-					//앞의 층에서 역전파 된 값을 delta로 하고
-					//
-					//delta3 * delta2 * delta1 * a1(1) 이런식으로 연산.
-					// (delta1_3 * w11_2 + delta2_3* w21_2) * (a1_2 * (1-a1_2) * a1_1
-					
 
 					V2D* delta2D = this->layers[j + 1]->getDelta2D();
 					V3D* weight3D = this->layers[j + 1]->getWeight3D();
@@ -1244,15 +1178,14 @@ namespace cnn {
 					V2D dataW = this->layers[j]->getData2D();
 					V2D* dActdW = &dataW;
 
-					V2D* deltaFC = new V2D((*dOutputdAct).size());
+					V2D* deltaFC = new V2D((*dOutputdAct));
 					for (int i = 0; i < (*deltaXw).size(); i++) {
-						(*deltaFC)[i].resize((*dOutputdAct)[i].size());
 						for (int j = 0; j < (*deltaXw)[i].size(); j++) {
 							(*deltaFC)[i][j] = (*deltaXw)[i][j] * (*dOutputdAct)[i][j];
 						}
 					}
 
-					this->layers[j]->setWeight3D(this->updateWeightsFC(this->layers[j]->getWeight3D(), deltaFC, dActdW, this->optimizer));
+					this->layers[j]->setWeight3D(this->updateWeightsFC(this->layers[j]->getWeight3D(), deltaFC, dActdW, this->optimizerType));
 					this->layers[j]->setDelta2D(deltaFC);
 				}
 				else {
@@ -1265,31 +1198,45 @@ namespace cnn {
 			clipDelta(deltaFC);
 
 			if (opt == OPTIMIZER::Mini_SGD) {
-
-				for (int i = 0; i < (*updateWeights).size(); i++) {
-					for (int j = 0; j < (*updateWeights)[i].size(); j++) {
-						for (int k = 0; k < (*updateWeights)[i][j].size(); k++) {
-
-							(*updateWeights)[i][j][k] -= this->leaningRate * (*deltaFC)[i][k] * (*dActdW)[i][j];
-						}
-					}
-				}
+				for (int i = 0; i < (*updateWeights).size(); i++)
+					for (int j = 0; j < (*updateWeights)[i].size(); j++)
+						for (int k = 0; k < (*updateWeights)[i][j].size(); k++)
+							(*updateWeights)[i][j][k] = optimizer->miniSGD(this->learningRate,(*updateWeights)[i][j][k], (*deltaFC)[i][k] * (*dActdW)[i][j]);
+							//(*updateWeights)[i][j][k] -= this->leaningRate * (*deltaFC)[i][k] * (*dActdW)[i][j];
 			}
-
+			else if (opt == OPTIMIZER::Momentum) {
+				for (int i = 0; i < (*updateWeights).size(); i++)
+					for (int j = 0; j < (*updateWeights)[i].size(); j++)
+						for (int k = 0; k < (*updateWeights)[i][j].size(); k++)
+							(*updateWeights)[i][j][k] = optimizer->momentum(this->learningRate, (*updateWeights)[i][j][k], ((*deltaFC)[i][k] * (*dActdW)[i][j]));
+			}
+			else if (opt == OPTIMIZER::Adagrad) {
+				for (int i = 0; i < (*updateWeights).size(); i++)
+					for (int j = 0; j < (*updateWeights)[i].size(); j++)
+						for (int k = 0; k < (*updateWeights)[i][j].size(); k++)
+							(*updateWeights)[i][j][k] = optimizer->adagrad(this->learningRate, (*updateWeights)[i][j][k], ((*deltaFC)[i][k] * (*dActdW)[i][j]));
+			}
+			else if (opt == OPTIMIZER::RMSProp) {
+				for (int i = 0; i < (*updateWeights).size(); i++)
+					for (int j = 0; j < (*updateWeights)[i].size(); j++)
+						for (int k = 0; k < (*updateWeights)[i][j].size(); k++)
+							(*updateWeights)[i][j][k] = optimizer->rmsProp(this->learningRate, (*updateWeights)[i][j][k], ((*deltaFC)[i][k] * (*dActdW)[i][j]));
+			}
+			else if (opt == OPTIMIZER::Adam) {
+				float v, m;
+				for (int i = 0; i < (*updateWeights).size(); i++)
+					for (int j = 0; j < (*updateWeights)[i].size(); j++)
+						for (int k = 0; k < (*updateWeights)[i][j].size(); k++)
+							(*updateWeights)[i][j][k] = optimizer->adam(this->learningRate, (*updateWeights)[i][j][k], ((*deltaFC)[i][k] * (*dActdW)[i][j]),m,v,this->epochsCount, 0.9f, 0.999f);
+			}
+			else if (opt == OPTIMIZER::Nadam) {
+				float v, m;
+				for (int i = 0; i < (*updateWeights).size(); i++)
+					for (int j = 0; j < (*updateWeights)[i].size(); j++)
+						for (int k = 0; k < (*updateWeights)[i][j].size(); k++)
+							(*updateWeights)[i][j][k] = optimizer->nadam(this->learningRate, (*updateWeights)[i][j][k], ((*deltaFC)[i][k] * (*dActdW)[i][j]), m, v, this->epochsCount, 0.9f, 0.999f);
+			}
 			
-			//else if (opt == OPTIMIZER::Momentum)
-			//	break;
-			//else if (opt == OPTIMIZER::Adagrad)
-			//	break;
-			//else if (opt == OPTIMIZER::RMSProp)
-			//	break;
-			//else if (opt == OPTIMIZER::Adam)
-			//	break;
-			//else if (opt == OPTIMIZER::Nadam)
-			//	break;
-			//	
-			//
-			//if(opt == OPTIMIZER::SGD)
 			
 			return updateWeights;
 		}
@@ -1358,14 +1305,12 @@ namespace cnn {
 
 	
 		V2D* derivativeAct(V2D* weights, ACTIVATION act) {
-			V2D* dw = new V2D((*weights).size());
+			V2D* dw = new V2D((*weights));
 			float alpha = 0.001f;
 			
 			if (act == ACTIVATION::Sigmoid || act == ACTIVATION::Softmax) {
-				
 				V1D preventOverflow = V1D((*weights).size(),0.0f);
 				for (int i = 0; i < (*weights).size(); i++) {
-					(*dw)[i].resize((*weights)[i].size());
 					for (int j = 0; j < (*weights)[i].size(); j++) {
 						(*dw)[i][j] = (*weights)[i][j] * (1.0f - (*weights)[i][j]);
 						preventOverflow[i] += (*dw)[i][j];
@@ -1378,31 +1323,28 @@ namespace cnn {
 			}
 			else if (act == ACTIVATION::ReLU) {
 				for (int i = 0; i < (*weights).size(); i++) {
-					(*dw)[i].resize((*weights)[i].size());
 					for (int j = 0; j < (*weights)[i].size(); j++)
 						(*dw)[i][j] = ((*weights)[i][j] > 0.0f) ? 1.0f : 0.0f;
 				}
 			}
 
 			else if (act == ACTIVATION::Maxout) {
-				for (int i = 0; i < (*weights).size(); i++) {
-					(*dw)[i].resize((*weights).size());
-					for (int j = 0; j < (*weights)[i].size(); j++) {
-						// 미분 식 알아보고 넣을것 
-						//(*dw)[i][j] = (*weights)[i][j];
-					}
-				}
+				float maxValue = -9999.0f;
+				for (int i = 0; i < (*weights).size(); i++) 
+					for (int j = 0; j < (*weights)[i].size(); j++) 
+						if (maxValue < (*weights)[i][j]) maxValue = (*weights)[i][j];
+				for (int i = 0; i < (*weights).size(); i++)
+					for (int j = 0; j < (*weights)[i].size(); j++)
+						(*dw)[i][j] = (*weights)[i][j] == maxValue ? 1.0f : 0.0f;		
 			}
 			else if (act == ACTIVATION::ELU) {
 				for (int i = 0; i < (*weights).size(); i++) {
-					(*dw)[i].resize((*weights).size());
 					for (int j = 0; j < (*weights)[i].size(); j++) 
 						(*dw)[i][j] = ((*weights)[i][j] > 0.0f) ? 1.0f : (alpha * std::exp((*weights)[i][j]));
 				}
 			}
 			else if (act == ACTIVATION::Leaky_ReLU) {
 				for (int i = 0; i < (*weights).size(); i++) {
-					(*dw)[i].resize((*weights).size());
 					for (int j = 0; j < (*weights)[i].size(); j++) 
 						(*dw)[i][j] = ((*weights)[i][j] < 0) ? alpha : 1.0f;
 				}

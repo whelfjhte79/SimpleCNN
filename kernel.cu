@@ -20,8 +20,9 @@ GPU_TEST::~GPU_TEST(void)
 
 
 __global__ void sum_kernel(int a, int b, int* c) {
-    for (int i = 0; i < 1000000; i++) {
+    for (int i = 0; i < 100; i++) {
         int tid = blockIdx.x * blockDim.x + threadIdx.x;
+        printf("Ãâ·Â: %d %d %d\n", blockIdx.x, blockDim.x, threadIdx.x);
         c[tid] = a + b;
     }
 }
@@ -30,7 +31,7 @@ int GPU_TEST::sum_cuda(int a, int b, int* c) {
     cudaMalloc((void**)&f, sizeof(int) * 1);
     cudaMemcpy(f, c, sizeof(int) * 1, cudaMemcpyHostToDevice);
     
-    sum_kernel <<<1, 1 >>> (a, b, f);
+    sum_kernel <<<128, 64 >>> (a, b, f);
     cudaMemcpy(c, f, sizeof(int) * 1, cudaMemcpyDeviceToHost);
 
     cudaFree(f);

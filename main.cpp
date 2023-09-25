@@ -4,16 +4,15 @@
 #include"SimpleCNN.h"
 #include"kernel.cuh"
 
-
-
 using namespace cv;
 using namespace std;
 using namespace img_read;
 using namespace cnn;
 
 //#include"test.h"
-
+//#define __CUDACC__
 // ¸ÞÀÎºÎºÐ
+/*
 #if !defined(TEST) && !defined(TEST2)
 
 int sum_int(int a, int b);
@@ -46,33 +45,34 @@ int main(void) {
 	return 0;
 }
 #endif
+*/
 
-/*
 int main(void) {
 
 	Directory* dirent = new Directory("C:\\Users\\ÀÌ»ó¹Î\\source\\repos\\SimpleCNN_image\\SimpleCNN_image",img_read::FILENAME_EXTENSION::JPG);
 	FileRead* label = new FileRead("C:\\Users\\ÀÌ»ó¹Î\\source\\repos\\SimpleCNN_image\\SimpleCNN_image\\test.csv");
 	CNN* cnn = new CNN(dirent->getImageSet(), label->getLabel());
 	//cnn->splitTrainTest(0.3);
-	cnn->add(new Conv(3, 3, 1, 1, ACTIVATION::ReLU)); 
+	cnn->add(new Conv(3, 3, 1, 1, ACTIVATION::TanH)); 
 	cnn->add(new Pooling(POOLING::Max));
 	cnn->add(new Padding(1));
 	cnn->add(new Conv(3, 3, 1, 1, ACTIVATION::ReLU));
 	cnn->add(new Pooling(POOLING::Max));
 	cnn->add(new Padding(1));
+	cnn->add(new Pooling(POOLING::Min));
+	cnn->add(new Pooling(POOLING::Average));
 	cnn->add(new Pooling(POOLING::Max));
-	cnn->add(new Pooling(POOLING::Max));
-	cnn->add(new Pooling(POOLING::Max));
-	cnn->add(new Pooling(POOLING::Max));
-	
+	cnn->add(new Pooling(POOLING::Min));
+	cnn->add(new Pooling(POOLING::Min));
+	cnn->add(new Pooling(POOLING::Min));
 	cnn->add(new Flatten());
-	cnn->add(new FullyConnected(256, ACTIVATION::ReLU));
-	cnn->add(new FullyConnected(128, ACTIVATION::ReLU));
+	cnn->add(new FullyConnected(256, ACTIVATION::Maxout));
+	cnn->add(new FullyConnected(128, ACTIVATION::Sigmoid));
 	cnn->add(new FullyConnected(64, ACTIVATION::ReLU));
 
 	cnn->add(new FullyConnected(10, ACTIVATION::Softmax));
 
-	cnn->compile(OPTIMIZER::Mini_SGD, LOSS::CategoricalCrossentropy);
+	cnn->compile(OPTIMIZER::Momentum, LOSS::CategoricalCrossentropy);
 	cnn->fit(3,2);
 
 
@@ -84,8 +84,8 @@ int main(void) {
 	
 
 	return 0;
-}*/
-#endif
+}
+//#endif
 #ifdef TEST
 #include"test.h"
 /*
