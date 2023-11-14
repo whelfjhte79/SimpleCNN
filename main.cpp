@@ -1,8 +1,8 @@
 #include<opencv2/opencv.hpp>
 #include<opencv2/core.hpp>
 #include<iostream>
-
-#define _CUDA_GPU_ // GPU 사용
+#include"WinVisualization.h" // 시각화 차트
+//#define _CUDA_GPU_ // GPU 사용
 #include"SimpleCNN.h"
 
 #ifdef _CUDA_GPU_
@@ -59,12 +59,22 @@ int main(void) {
 #ifdef _CUDA_GPU_
 int main(void) {
 	std::cout << "테스트";
+	Directory* dirent = new Directory("C:\\Users\\이상민\\source\\repos\\SimpleCNN_image\\SimpleCNN_image", img_read::FILENAME_EXTENSION::JPG);
+	FileRead* label = new FileRead("C:\\Users\\이상민\\source\\repos\\SimpleCNN_image\\SimpleCNN_image\\test.csv");
 
-	ActivationGPU a;
-	std::cout<< a.test() <<"\n";
-	cnn::Conv conv;
-
-	cout << conv.testConv();
+	//ActivationGPU a;
+	//std::cout<< a.test() <<"\n";
+	
+	cnn::CNN cnn;
+	V4D test = cnn.zeroFillToFit(dirent->getImageSet());
+	
+	Flatten flat;
+	V2D t = flat.calculate(test, cnn::LAYER::Flatten);
+	
+	std::cout << t.size() << " " << t[0].size();
+	
+	WinApp* app = new WinApp({ 50 , 100 , 150 , 200 , 250, 300 }, { 100 , 50 , 200 , 150 , 250, 400 }, "X Axis", "Y Axis");
+	app->Run();
 
 	return 0;
 }
@@ -98,10 +108,10 @@ int main(void) {
 	cnn->add(new FullyConnected(10, ACTIVATION::Softmax));
 
 	cnn->compile(OPTIMIZER::Momentum, LOSS::CategoricalCrossentropy);
-	cnn->fit(3,2);
+	cnn->fit(1,5);
 
-
-
+	cnn->save("cnn_test.txt");
+	cnn->load("cnn_test.txt");
 	cnn->predict(dirent->getImageSet().at(2),label->getLabel().at(2));
 
 	cnn->accuracy();

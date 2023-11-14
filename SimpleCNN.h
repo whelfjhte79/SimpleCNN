@@ -64,7 +64,7 @@ namespace cnn {
 		Max, Average, Min
 	};
 	enum class ACTIVATION {
-		None, Sigmoid, ReLU, Leaky_ReLU, TanH, Maxout, ELU, Softmax
+		None,Error, Sigmoid, ReLU, Leaky_ReLU, TanH, Maxout, ELU, Softmax
 	};
 	enum class OPTIMIZER {
 		GD, Mini_SGD, Momentum, Adagrad, RMSProp, Adam, Nadam
@@ -170,12 +170,16 @@ namespace cnn {
 			return this->dist(mt);
 		}
 		void randGen(V1D& data) {
-			for (int i = 0; i < data.size(); i++)
-				data[i] = getGenRandNumber();
+			//if (!initialized) {
+				for (int i = 0; i < data.size(); i++)
+					data[i] = getGenRandNumber();
+			///}
 		}
 		void randGen(V2D& data) {
-			for (int i = 0; i < data.size(); i++)
-				randGen(data[i]);
+			//if (!initialized) {
+				for (int i = 0; i < data.size(); i++)
+					randGen(data[i]);
+			//}
 		}
 		void randGen(V3D& data, bool initialized) {
 			if (!initialized) {
@@ -184,7 +188,11 @@ namespace cnn {
 			}
 		}
 	};
-	class Layer {
+	class Layer 
+#ifdef _CUDA_GPU_
+		: public LayerGPU
+#endif
+	{
 	public: 
 		LAYER layerType;
 		int filterRowCol;
@@ -433,30 +441,59 @@ namespace cnn {
 	{
 	private:
 		V3D* filter3D = nullptr;
-		
-		int stride;
+
 		int outputZ;
 		int outputY;
 		int outputX;
 		V4D actMap4D;
 		V4D saveData4DSize;
-		
+		V3D initFilter;
 		V4D* delta = nullptr;
 		
 		Activation* activation = nullptr;
 		RandomGen* randVal = new RandomGen(-0.1f, 0.1f);
 		bool initialized = false;
 	public:
-		Conv(const int filterRowCol = 3, const int filterSize = 1, const int stride = 1, const int paddingSize = 1, ACTIVATION act = ACTIVATION::ReLU) {
+		Conv(const int filterRowCol, const int filterSize, const int stride, const int paddingSize, ACTIVATION act, V3D filter) {
 			this->layerType = LAYER::Conv;
 			this->stride = stride;
 			this->paddingSize = paddingSize;
 			this->act = act;
-			this->filter3D = new V3D(filterSize, V2D(filterRowCol, V1D(filterRowCol, 0)));
-			this->randVal->randGen(*this->filter3D, initialized);
+			this->filterRowCol = filterRowCol;
+			this->filterSize = filterSize;
+
+			initFilter = filter;
+
+			this->filter3D = &initFilter;
 			initialized = true;
 			this->activation = new Activation(act);
-			//this->convPadding = new Padding(paddingSize);
+		}
+		Conv(const int filterRowCol = 3, const int filterSize = 1, const int stride = 1, const int paddingSize = 1, ACTIVATION act = ACTIVATION::ReLU) {
+			this->layerType = LAYER::Conv;
+			this->stride = stride;
+			this->filterRowCol = filterRowCol;
+			this->filterSize = filterSize;
+			this->paddingSize = paddingSize;
+			this->act = act;
+#ifdef _CUDA_GPU_
+			
+			this->filter3D = new V3D(filterSize, V2D(filterRowCol, V1D(filterRowCol, 0)));
+			this->randVal->randGen(*this->filter3D, initialized);
+			//this->filter1D = new V1D(filterSize * filterRowCol * filterRowCol, 0.0f);
+			//this->randVal->randGen(*this->filter1D, initialized);
+
+			this->setFilter3DGPU(this->filter3D);
+			this->setStrideGPU(stride);
+			this->setFilterRowColGPU(filterRowCol);
+			
+#else
+			this->filter3D = new V3D(filterSize, V2D(filterRowCol, V1D(filterRowCol, 0)));
+			this->randVal->randGen(*this->filter3D, initialized);
+#endif
+			
+			initialized = true;
+			this->activation = new Activation(act);
+			
 		}
 		~Conv() {
 			for (auto& d2d : *filter3D) {
@@ -751,7 +788,6 @@ namespace cnn {
 		virtual void setData(V4D data4D) override {
 			this->data4D = data4D;
 		}
-
 		V2D calculate(V4D data, LAYER layer) override {
 			V2D flat = V2D(0);
 			V1D flat1D;
@@ -765,6 +801,7 @@ namespace cnn {
 			}
 			return flat;
 		}
+		
 
 #ifdef _CUDA_GPU_
 
@@ -782,7 +819,7 @@ namespace cnn {
 		
 		V2D* weight2D = nullptr;
 		V3D* weight3D = new V3D();
-		
+		V3D initWeight;
 		V1D* result = nullptr;
 		RandomGen* randomGen = new RandomGen(-1.0, 1.0);
 		bool initialized = false;
@@ -796,6 +833,15 @@ namespace cnn {
 		FullyConnected() {
 			this->activation = new Activation();
 			this->act = ACTIVATION::Sigmoid;
+		}
+		FullyConnected(int denseSize, ACTIVATION act, V3D weight) {
+			this->layerType = LAYER::FC;
+			this->act = act;
+			this->denseSize = denseSize;
+			this->activation = new Activation(act);
+			initWeight = weight;
+			initialized = true;
+			this->weight3D = &initWeight;
 		}
 		FullyConnected(int denseSize, ACTIVATION act) {
 			this->layerType = LAYER::FC;
@@ -919,6 +965,7 @@ namespace cnn {
 	class CNN {
 	private:
 		V5D imageSet;
+		V3D imageSet3D;
 		V4D image;
 		V3D filter;
 		V1D label1D;
@@ -949,11 +996,57 @@ namespace cnn {
 		void setLayer() {
 
 		}
-		V5D& batchImage(V4D& image, int batchSize) {
-			if (image.size() < batchSize) {
-				cout << "batch size ERROR";
-				return imageSet; 
+	public:
+		V4D resize(V4D image, float x, float y) {
+			// 양선형 보간법
+			//int x1 = int(x);
+			//int x2 = x1 + 1;
+			//int y1 = int(y);
+			//int y2 = y1 + 1;
+			//
+			//float dx = x - x1;
+			//float dy = y - y1;
+			//
+			//int Q11 = image.getPixel(x1, y1);
+			//int Q21 = image.getPixel(x2, y1);
+			//int Q12 = image.getPixel(x1, y2);
+			//int Q22 = image.getPixel(x2, y2);
+			//
+			//int result = int((1 - dx) * (1 - dy) * Q11 +
+			//	dx * (1 - dy) * Q21 +
+			//	(1 - dx) * dy * Q12 +
+			//	dx * dy * Q22);
+			//
+			return image;
+
+		}
+		V4D zeroFillToFit(V4D image) {
+			unsigned int maxXY = 0, maxC = 0;
+			for (int i = 0; i < image.size(); i++) {
+				for (int j = 0; j < image[i].size(); j++) {
+					for (int k = 0; k < image[i][j].size(); k++) {
+						if (maxXY < image[i][j][k].size()) maxXY = image[i][j][k].size();
+					}
+					if (maxXY < image[i][j].size()) maxXY = image[i][j].size();
+				}
+				if (maxC < image[i].size()) maxC = image[i].size();
 			}
+			V4D image4D = V4D(image.size(), V3D(maxC, V2D(maxXY, V1D(maxXY, 0.0f))));
+
+			for (int i = 0; i < image.size(); i++) {
+				for (int j = 0; j < image[i].size(); j++) {
+					for (int k = 0; k < image[i][j].size(); k++) {
+						for (int l = 0; l < image[i][j][k].size(); l++) {
+							image4D[i][j][k][l] = image[i][j][k][l];
+						}
+					}
+				}
+			}
+			
+			return image4D;
+		}
+	private:
+		V5D& batchImage(V4D& image, unsigned int batchSize) {
 			int numBatches = (int)image.size() / batchSize;
 
 			for (int i = 0; i < numBatches; i++) {
@@ -965,6 +1058,29 @@ namespace cnn {
 			}
 
 			return this->imageSet;
+		}
+		V3D& batchImage2D(V4D& image, unsigned int batchSize) {
+			int numBatches = (int)image.size() / batchSize;
+
+			for (int i = 0; i < numBatches; i++) {
+				V2D image2D;
+				for (int j = i * batchSize; j < min((i + 1) * batchSize, (int)image.size()); j++) {
+					V1D image1D;
+					for (int k = 0; k < image[j].size(); k++) {
+						for (int l = 0; l < image[j][k].size(); l++) {
+							for (int m = 0; m <image[j][k][l].size(); m++) {
+								image1D.push_back(image[j][k][l][m]);
+							}
+						}
+					}
+					image2D.push_back(image1D);
+					image1D.clear();
+				}
+				this->imageSet3D.push_back(image2D);
+				image2D.clear();
+			}
+
+			return this->imageSet3D;
 		}
 		V2D& batchLabel(V1D& label, int batchSize) {
 
@@ -1011,7 +1127,260 @@ namespace cnn {
 		//		else this->trainLabel.push_back(this->Label.at(i));
 		//	}
 		//}
+			private:
+				std::string actTypeToString(ACTIVATION act) {
+					std::string actString;
+					switch (act) {
+					case ACTIVATION::TanH:
+						actString = "TanH";
+						break;
+					case ACTIVATION::Softmax:
+						actString = "Softmax";
+						break;
+					case ACTIVATION::Sigmoid:
+						actString = "Sigmoid";
+						break;
+					case ACTIVATION::ReLU:
+						actString = "ReLU";
+						break;
+					case ACTIVATION::None:
+						actString = "None";
+						break;
+					case ACTIVATION::Maxout:
+						actString = "Maxout";
+						break;
+					case ACTIVATION::Leaky_ReLU:
+						actString = "Leaky_ReLU";
+						break;
+					case ACTIVATION::ELU:
+						actString = "ELU";
+						break;
+					default:
+						actString = "Error";
+						break;
+					}
+					return actString;
+				}
+				ACTIVATION stringToActType(std::string type) {
+					ACTIVATION act;
+					if (type == "TanH")
+						act = ACTIVATION::TanH;
+					else if (type == "Softmax")
+						act = ACTIVATION::Softmax;
+					else if (type == "Sigmoid")
+						act = ACTIVATION::Sigmoid;
+					else if (type == "ReLU")
+						act = ACTIVATION::ReLU;
+					else if (type == "None")
+						act = ACTIVATION::None;
+					else if (type == "Maxout")
+						act = ACTIVATION::Maxout;
+					else if (type == "Leaky_ReLU")
+						act = ACTIVATION::Leaky_ReLU;
+					else if (type == "ELU")
+						act = ACTIVATION::ELU;
+					else
+						act = ACTIVATION::Error;
 
+					return act;
+				}
+
+	public:
+		void save(const std::string& filename) {
+			std::ofstream file(filename);
+
+			if (!file.is_open()) {
+				std::cerr << "파일 열기 실패: " << filename << std::endl;
+				return;
+			}
+
+			for (const auto& layer : layers) {
+
+				if (layer->getLayerType() == LAYER::Conv || layer->getLayerType() == LAYER::FC) {
+					V3D* filter3D = nullptr;
+					if (layer->getLayerType() == LAYER::Conv) {
+						file << "Conv\n";
+						file << layer->filterRowCol << " " << layer->filterSize << " " << layer->stride << " " << layer->paddingSize << "\n";
+						std::string act = actTypeToString(layer->act);
+						file << act << "\n";
+
+						//file << 
+						filter3D = layer->getFilter3D();
+
+					}
+					else {
+						file << "FC\n";
+
+
+						std::string act = actTypeToString(layer->act);
+						file << layer->denseSize << " " << act << "\n";
+
+						filter3D = layer->getWeight3D();
+						//file << (*filter3D).size() << " " << (*filter3D)[0].size() << "\n";
+					}
+
+					for (int i = 0; i < (*filter3D).size(); i++) {
+						for (int j = 0; j < (*filter3D)[i].size(); j++) {
+							for (int k = 0; k < (*filter3D)[i][j].size(); k++) {
+								file << (*filter3D)[i][j][k] << ' ';
+							}
+							file << "\n";
+						}
+						file << "\n";
+					}
+					file << "End\n";
+				}
+				else if (layer->getLayerType() == LAYER::Padding) {
+					file << "Padding\n";
+					file << layer->paddingSize << "\n";
+				}
+				else if (layer->getLayerType() == LAYER::Pool) {
+					file << "Pool\n";
+					if (layer->poolingName == POOLING::Max) file << "Max\n";
+					else if (layer->poolingName == POOLING::Min) file << "Min\n";
+					else if (layer->poolingName == POOLING::Average) file << "Average\n";
+					else { file << "Error\n"; }
+				}
+				else if (layer->getLayerType() == LAYER::Flatten) {
+					file << "Flatten\n";
+				}
+				else {
+					file << "Error\n";
+				}
+			}
+			file.close();
+			cout << "파일 쓰기 성공\n";
+		}
+
+		void load(const std::string& filename) {
+			std::ifstream file(filename);
+
+			if (!file.is_open()) {
+				std::cerr << "Unable to open file: " << filename << std::endl;
+				return;
+			}
+
+			layers.clear();
+
+			std::string line, prevLine = "";
+			int i = 0;
+			while (std::getline(file, line)) {
+
+				if (line == "Conv") {
+					std::string convSetting;
+					std::getline(file, convSetting);
+					std::istringstream convStream(convSetting);
+					std::vector<int> convSettingRow;
+					int value;
+					while (convStream >> value) {
+						convSettingRow.push_back(value);
+					}
+					std::string convAct;
+					std::getline(file, convAct);
+
+					ACTIVATION act = stringToActType(convAct);
+
+					std::string weightsLine;
+					V3D weight3D;
+					V2D weight2D;
+					while (weightsLine != "End") {
+						std::getline(file, weightsLine);
+
+						std::istringstream weightsStream(weightsLine);
+						std::vector<float> weightRow;
+						float value;
+						while (weightsStream >> value) {
+							weightRow.push_back(value);
+						}
+
+						if (!weightsLine.empty()) {
+							weight2D.push_back(weightRow);
+							weightRow.clear();
+						}
+						else {
+							weight3D.push_back(weight2D);
+							weight2D.clear();
+						}
+					}
+
+					layers.push_back(new Conv(convSettingRow[0],
+						convSettingRow[1],
+						convSettingRow[2],
+						convSettingRow[3],
+						act,
+						weight3D)
+					);
+				}
+				else if (line == "FC") {
+
+					std::string fullySetting;
+					std::getline(file, fullySetting);
+					//fullySetting
+					std::istringstream fullyStream(fullySetting);
+					int dense;
+					std::string value;
+					fullyStream >> dense;
+					fullyStream >> value;
+
+					std::string weightsLine;
+					V3D weight3D;
+					V2D weight2D;
+					while (weightsLine != "End") {
+						std::getline(file, weightsLine);
+
+						std::istringstream weightsStream(weightsLine);
+						std::vector<float> weightRow;
+						float value;
+						while (weightsStream >> value) {
+							weightRow.push_back(value);
+						}
+
+						if (!weightsLine.empty()) {
+							weight2D.push_back(weightRow);
+							weightRow.clear();
+						}
+						else {
+							weight3D.push_back(weight2D);
+							weight2D.clear();
+						}
+					}
+					layers.push_back(new FullyConnected(dense, stringToActType(value), weight3D));
+				}
+				else if (line == "Pool") {
+					std::string pool;
+					std::getline(file, pool);
+					if (pool == "Max")
+						layers.push_back(new Pooling(POOLING::Max));
+					else if (pool == "Min")
+						layers.push_back(new Pooling(POOLING::Min));
+					else if (pool == "Average")
+						layers.push_back(new Pooling(POOLING::Average));
+					else {
+						std::cout << "error";
+						return;
+					}
+				}
+				else if (line == "Padding") {
+					std::string padding;
+					std::getline(file, padding);
+					int value;
+					std::istringstream paddingStream(padding);
+					paddingStream >> value;
+
+					layers.push_back(new Padding(value));
+				}
+				else if (line == "Flatten") {
+					layers.push_back(new Flatten());
+				}
+				else {
+					std::cout << "error";
+					return;
+				}
+			}
+
+			file.close();
+			std::cout << "Model loaded from: " << filename << std::endl;
+		}
 		void normalization(V4D& image) {
 			for (int i = 0; i < image.size(); ++i)
 				for (int j = 0; j < image[i].size(); ++j)
@@ -1049,7 +1418,12 @@ namespace cnn {
 				cout << "\nepochs:" << i+1 << "\n";
 
 				for (int j = 0; j < this->imageSet.size(); ++j) {		
+#ifdef _CUDA_GPU_
+					this->layers[0]->setData(this->imageSet3D[j]);
+#else
 					this->layers[0]->setData(this->imageSet[j]);
+#endif //
+
 					this->target1D = this->labelSet2D[j];
 		
 					this->feedforward(batchSize);
@@ -1109,31 +1483,55 @@ namespace cnn {
 				const int LAST = (int)this->layers.size() - 1;
 
 				if (this->layers[i]->getLayerType() == LAYER::Conv) {
+#ifdef _CUDA_GPU_
+					V2D data = this->layers[i]->getData2D();
+					this->layers[(i + 1)]->setData(this->layers[i]->calculateGPU(data));
+#else
 					V4D data = this->layers[i]->getData4D();
 					this->layers[(i + 1)]->setData(this->layers[i]->calculate(data));
-					
+#endif					
 				}
 				else if (i == LAST && this->layers[i]->getLayerType() == LAYER::FC) {
 					V2D data = this->layers[i]->getData2D();
+#ifdef _CUDA_GPU_
+					this->output = this->layers[i]->calculateGPU(data);
+#else
 					this->output = this->layers[i]->calculate(data);
-
+#endif
 				}
 				else if (this->layers[i]->getLayerType() == LAYER::Act || this->layers[i]->getLayerType() == LAYER::Pool || this->layers[i]->getLayerType() == LAYER::Padding) {
+#ifdef _CUDA_GPU_
+					V2D data = this->layers[i]->getData2D();
+					this->layers[i + 1]->setData(this->layers[i]->calculateGPU(data));
+#else
 					V4D data = this->layers[i]->getData4D();	
 					this->layers[i + 1]->setData(this->layers[i]->calculate(data));
+#endif
+					
 
 				}
 				else if (this->layers[i]->getLayerType() == LAYER::Flatten) {
+#ifdef _CUDA_GPU_
+					V2D data = this->layers[i]->getData2D();
+					V2D flat = this->layers[i]->calculateGPU(data);
+#else
+
 					V4D data = this->layers[i]->getData4D();
 					V2D flat = this->layers[i]->calculate(data, LAYER::Flatten);
-
+#endif
 					this->layers[i + 1]->setData(flat);
 
 
 				}
 				else if (this->layers[i]->getLayerType() == LAYER::FC) {
+#ifdef _CUDA_GPU_
+					V2D data = this->layers[i]->getData2D();
+					V2D cal = this->layers[i]->calculateGPU(data);
+#else
 					V2D data = this->layers[i]->getData2D();
 					V2D cal = this->layers[i]->calculate(data);
+
+#endif
 					this->layers[i + 1]->setData(cal);
 										
 				}
