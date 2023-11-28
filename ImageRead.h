@@ -23,14 +23,19 @@ namespace img_read {
 		Mat img;
 	public:
 		Image() {}
-		void imageRead(string fileName) { // PNG
+		void imageRead(string fileName) {
+
+			std::cout << "fileName: " << fileName <<"\n";
 			img = imread(fileName, 1);
 
+			std::cout <<"이미지값:" << img.rows << " "  << img.cols << "\n";
+			
 			for (int i = 0; i < img.rows; i++) {
 				for (int j = 0; j < img.cols; j++) {
 					float b = (float)img.at<Vec3b>(i, j)[0] / 255.f;
 					float g = (float)img.at<Vec3b>(i, j)[1] / 255.f;
 					float r = (float)img.at<Vec3b>(i, j)[2] / 255.f;
+
 					rV.push_back(r); gV.push_back(g); bV.push_back(b);
 
 				}
@@ -139,7 +144,6 @@ namespace img_read {
 				}
 			}
 			else {
-
 			}
 		}
 	};

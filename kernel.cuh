@@ -20,11 +20,11 @@ extern "C" {
 	public:
 
 	};
-	class LayerGPU {
+	class LayerGPU{
 	private:
 		V1D dummy1D;
-		V2D dummy2D; // 가능하면 2차원 선에서 다 구현해야함.
-		V3D dummy3D; // 최대 3차원
+		V2D dummy2D; 
+		V3D dummy3D;
 		V4D dummy4D;
 	public:
 		virtual V4D calculateGPU(V4D data) { return dummy4D; }
@@ -35,11 +35,11 @@ extern "C" {
 	class ActivationGPU : public LayerGPU {
 	public:
 		int test() { return 0; }
-		V2D calculateGPU(V2D data) override {
+		virtual V2D calculateGPU(V2D data) override {
 			V2D dummy;
 			return dummy;
 		}
-		V4D calculateGPU(V4D data) override {
+		virtual V4D calculateGPU(V4D data) override {
 			V4D dummy;
 			return dummy;
 		}
@@ -71,8 +71,8 @@ extern "C" {
 		~ConvGPU() {
 			//delete filter3D;
 		}
-		void setFilter3DGPU(V3D* filter) {
-			this->filter3D;
+		virtual void setFilter3DGPU(V3D* filter) {
+			this->filter3D = filter;
 		}
 		void setStrideGPU(int stride) {
 			this->strideGPU = stride;
@@ -85,17 +85,39 @@ extern "C" {
 
 
 		}
-		V4D calculateGPU(V4D data) override {
-			V2D data2D = im2col(data, filterRowColGPU, strideGPU);
-			for (int i = 0; i < (*this->filter3D).size(); i++) {
-				// 행렬연산.  data2D와 filter3D[i]의 행렬연산
+		virtual V4D calculateGPU(V4D data) override {
+			std::cout << "Conv 시작\n";
+			/*
+			V2D image2D = im2col(X, 3, 8, 1);
+			V2D filter2DR = filter2col(&X, filter, 1);
+			V2D filter2D = transpose(filter2DR);
 
-				// filter3D[i] 한장이 data2D 에 한번 돌음
-				// 그럼 필터를 행렬로 바꾸면 
-			}
+			V2D result = V2D(image2D.size(), V1D(filter2D[0].size(), 0.0f));
+
+
+			imageXfilter(result, image2D, filter2D);
+
+
+			V4D end = col2im(result, X.size(), X[0].size(), X[0][0].size(), X[0][0][0].size(), 3, 8, 1);
+			*/
+			V2D data2D = im2col(data, filterRowColGPU,(*filter3D).size(), strideGPU);
+			
+			V2D filter2D = filter2col((*this->filter3D),strideGPU);
+			
+
+			cout << "데이터크기: " << data2D.size() << " " << data2D[0].size() <<"\n";
+			cout << "필터크기: " << filter2D.size() << " " << filter2D[0].size() << "\n";
 
 			
-			return col2im(data2D, data.size(), data[0].size(), data[0][0].size(), data[0][0][0].size(), filterRowColGPU, strideGPU);
+			V2D cal = imageXfilter(data2D, filter2D);
+
+			cout << "cal크기:" << cal.size() << " " << cal[0].size()<<"\n";
+			
+			
+
+			V4D result = col2im(cal, data.size(), data[0].size(), data[0][0].size(), data[0][0][0].size(), filterRowColGPU, (*filter3D).size(), strideGPU);
+
+			return result;
 		}
 		/*
 		V4D calculateGPU(V4D data) override {
@@ -268,7 +290,47 @@ extern "C" {
 			return delta;
 		}
 	private:
-		V2D im2col(const V4D& image, int kernelSize, int stride) {
+		V2D im2col(const V4D& image, int kernelRowCol, int kernelSize, int stride) {
+
+			cout << "TTTTTTTTTT크기4D: " << image.size() << "\n";
+			cout << "TTTTTTTTTT크기3D: " << image[0].size() << "\n";
+			cout << "TTTTTTTTTT크기2D: " << image[0][0].size() << "\n";
+			cout << "TTTTTTTTTT크기1D: " << image[0][0][0].size() << "\n";
+
+			int imageSize = image.size();
+			int channel = image[0].size();
+			int height = image[0][0].size();
+			int width = image[0][0][0].size();
+
+
+
+
+			int output_height = (height - kernelRowCol) / stride + 1;
+			int output_width = (width - kernelRowCol) / stride + 1;
+
+			V2D col;
+			for (int i = 0; i < kernelSize; i++) {
+				for (int f = 0; f < imageSize; f++) {
+					for (int d = 0; d < channel; ++d) {
+						V1D col_entry;
+						for (int h = 0; h < output_height; ++h) {
+							for (int w = 0; w < output_width; ++w) {
+								for (int i = h * stride; i < h * stride + kernelRowCol; ++i) {
+									for (int j = w * stride; j < w * stride + kernelRowCol; ++j) {
+										col_entry.push_back(image[f][d][i][j]);
+									}
+								}
+							}
+
+						}
+						col.push_back(col_entry);
+					}
+
+				}
+			}
+			return col;
+		}
+		/*V2D im2col(const V4D& image, int kernelSize, int stride) {
 			int imageSize = image.size();
 			int channel = image[0].size();
 			int height = image[0][0].size();
@@ -294,24 +356,125 @@ extern "C" {
 
 			}
 			return col;
+		}*/
+		V2D filter2col(const V3D& filter, int stride) {
+			V2D col;
+
+			for (int i = 0; i < filter.size(); i++) {
+				V1D col1D;
+				for (int j = 0; j < filter[i].size(); j++) {
+					for (int k = 0; k < filter[i][j].size(); k++) {
+						col1D.push_back(filter[i][j][k]);
+					}
+				}
+				col.push_back(col1D);
+			}
+			return col;
 		}
+		
+		V4D col2im(const V2D& col, int imageSize, int channel, int height, int width, int kernelRowCol, int kernelSize, int stride) {
+			int outputH = (height - kernelRowCol) / stride + 1;
+			int outputW = (width - kernelRowCol) / stride + 1;
 
-		V4D col2im(const V2D& col, int imageSize, int channel, int height, int width, int kernelSize, int stride) {
-			int output_height = (height - kernelSize) / stride + 1;
-			int output_width = (width - kernelSize) / stride + 1;
+			// 48 9604
+			// (2 X [3 X 8]) (98 X 98)
+			V4D image = V4D(imageSize, V3D(channel * kernelSize, V2D(outputH, V1D(outputW, 0.0f))));
 
-			V4D image = V4D(imageSize, V3D(channel));
+			for (int i = 0; i < imageSize; i++) { // 이미지 크기는 고정
+				for (int j = 0; j < kernelSize * channel; j++) { // 커널 크기는 kernelSize * channel 곱셈
+					for (int k = 0; k < outputH; k++) {
+						for (int l = 0; l < outputW; l++) {
+							image[i][j][k][l] = col[i * (kernelSize * channel) + j][k * outputW + l];
+						}
+					}
+				}
+			}
+
+			return image;
+		}
+		/*
+		V4D col2im(const V2D& col, int imageSize, int channel, int height, int width, int kernelRowCol, int kernelSize, int stride) {
+			int output_height = (height - kernelRowCol) / stride + 1;
+			int output_width = (width - kernelRowCol) / stride + 1;
+
+			cout << "col2i imageSize: " << imageSize << "\n";
+			cout << "col2i chanXkernelSize: " << channel * kernelSize<<"\n";
+			cout << "col2i output_height: " << output_height<<"\n";
+			cout << "col2i outputwidth: " << output_width <<"\n";
+
+			V4D image(imageSize, V3D(channel * kernelSize, V2D(output_height, V1D(output_width))));
+
+			int col_index = 0;
+
+			cout << "\n\n로그기록:\n\n";
+			cout << "kernelSize: " << kernelSize << "\n";
+			cout << "imageSize: " << imageSize << "\n";
+			cout << "output_height: " << output_height << "\n";
+			cout << "channel: " << channel << "\n";
+			cout << "output_width: " << output_width << "\n";
+			cout << " h * stride: " << output_height * stride << "\n";
+			cout << " h * stride + kernelRowCol: " << output_height * stride + kernelRowCol << "\n";
+			// 8 x 3 x 100 x 98 = 235,200 
+			for (int i = 0; i < kernelSize; i++) {
+				for (int f = 0; f < imageSize; f++) {
+					for (int h = 0; h < output_height; ++h) {
+						for (int d = 0; d < channel; ++d) {
+							for (int w = 0; w < output_width; ++w) {
+								for (int x = h * stride; x < h * stride + kernelRowCol; ++x) {
+									for (int y = w * stride; y < w * stride + kernelRowCol; ++y) {
+										image[f][d + i][x][y] = col[col_index][i];
+									}
+								}
+							}
+							col_index++;
+						}
+					}
+				}
+			}
+			*/
+			/*
+			for (int i = 0; i < kernelSize; i++) {
+				for (int f = 0; f < imageSize; f++) {
+					for (int h = 0; h < output_height; ++h) {
+						for (int d = 0; d < channel; ++d) {
+							for (int w = 0; w < output_width; ++w) {
+								for (int x = h * stride; x < h * stride + kernelRowCol; ++x) {
+									for (int y = w * stride; y < w * stride + kernelRowCol; ++y) {
+										image[f][d + i][x][y] = col[col_index][w];
+									}
+								}
+							}
+							col_index++;
+						}
+					}
+				}
+			}
+			*/
+		/*
+			return image;
+		}
+		*/
+
+
+
+
+		/*
+		V4D col2im(const V2D& col, int imageSize, int channel, int height, int width, int kernelRowCol, int kernelSize, int stride) {
+			int output_height = (height - kernelRowCol) / stride + 1;
+			int output_width = (width - kernelRowCol) / stride + 1;
+
+			V4D image = V4D(imageSize * kernelSize, V3D(channel));
 			int cnt1D = 0;
-			for (int f = 0; f < imageSize; f++) {
+			for (int f = 0; f < imageSize * kernelSize; f++) {
 				for (int h = 0; h < output_height; ++h) {
 					for (int d = 0; d < channel; ++d) {
 						int cnt = 0;
 						for (int w = 0; w < output_width; ++w) {
-							image[f][d].resize(h * stride + kernelSize);
-							for (int i = h * stride; i < h * stride + kernelSize; ++i) {
-								image[f][d][i].resize(w * stride + kernelSize);
-								for (int j = w * stride; j < w * stride + kernelSize; ++j) {
-									image[f][d][i][j] = col[cnt1D][cnt];
+							image[f][d].resize(h * stride + kernelRowCol);
+							for (int i = h * stride; i < h * stride + kernelRowCol; ++i) {
+								image[f][d][i].resize(w * stride + kernelRowCol);
+								for (int j = w * stride; j < w * stride + kernelRowCol; ++j) {
+									image[f][d][i][j] += col[cnt1D][cnt];
 									cnt++;
 								}
 							}
@@ -325,7 +488,32 @@ extern "C" {
 
 			return image;
 		}
-
+		/*
+		V2D filter2col(const V4D* image, const V3D& filter, int stride) {
+			V2D col;
+			int imageXSize = ((*image)[0][0][0].size() - filter[0].size()) / stride + 1;
+			int imageYSize = ((*image)[0][0].size() - filter[0].size()) / stride + 1;
+			int imageChannel = (*image)[0].size();
+			int imageSize = (*image).size();
+			for (int i = 0; i < filter.size(); i++) {
+				for (int j = 0; j < imageSize; j++) {
+					for (int k = 0; k < imageChannel; k++) {
+						for (int l = 0; l < imageYSize; l++) {
+							V1D col1D;
+							for (int o = 0; o < imageXSize; o++) {
+								for (int m = 0; m < filter[i].size(); m++) {
+									for (int n = 0; n < filter[0].size(); n++) {
+										col1D.push_back(filter[i][m][n]);
+									}
+								}
+							}
+							col.push_back(col1D);
+						}
+					}
+				}
+			}
+			return col;
+		}*/
 		V2D transpose(const vector<V1D>& data) {
 			V2D trans = V2D(data[0].size(), V1D(data.size(), 0.0f));
 			for (int i = 0; i < data.size(); i++) {
@@ -335,7 +523,24 @@ extern "C" {
 			}
 			return trans;
 		}
+		V2D imageXfilter(V2D image, V2D filter) {
+			/*
+			* int image4D_XSize;
+			이미지: 48 86436
+		필터: 8 9 이면
+			result가 x축이 9604가 나와야하는데
+			x축이 9임.
 
+
+			*/
+			V2D result = V2D(image.size(), V1D(image[0].size() / filter[0].size(), 0.0f));
+			for (int i = 0; i < image.size(); i++) {
+				for (int j = 0; j < image[i].size(); j++) {
+					result[i][(j / filter[0].size()) % filter[0].size()] += image[i][j] * filter[i % filter.size()][j % filter[i % filter.size()].size()];
+				}
+			}
+			return result;
+		}
 
 	};
 	class PoolingGPU : public LayerGPU {
@@ -374,6 +579,8 @@ extern "C" {
 			return delta;
 		}
 	};
+
+
 
 
 #ifdef __cplusplus 

@@ -46,6 +46,7 @@
 #include"ImageRead.h"
 #include <random>
 #include"kernel.cuh"
+#include <chrono>
 using namespace cv;
 using namespace std;
 
@@ -164,22 +165,33 @@ namespace cnn {
 		std::random_device rd;
 		std::mt19937 mt;
 		std::uniform_real_distribution<float> dist;
+		std::uniform_int_distribution<int> distInt;
+
 	public:
 		RandomGen(float min, float max) : mt(rd()), dist(min, max) {}
+		RandomGen(int min, int max) : mt(rd()), distInt(min, max) {}
+
 		float getGenRandNumber() {
 			return this->dist(mt);
 		}
+		float getGenRandInt() {
+			return (float)this->distInt(mt);
+		}
 		void randGen(V1D& data) {
-			//if (!initialized) {
-				for (int i = 0; i < data.size(); i++)
-					data[i] = getGenRandNumber();
-			///}
+			for (int i = 0; i < data.size(); i++)
+				data[i] = getGenRandNumber();
+		}
+		void randGenInt(V1D& data) {
+			for (int i = 0; i < data.size(); i++)
+				data[i] = static_cast<float>(getGenRandInt());
 		}
 		void randGen(V2D& data) {
-			//if (!initialized) {
-				for (int i = 0; i < data.size(); i++)
-					randGen(data[i]);
-			//}
+			for (int i = 0; i < data.size(); i++)
+				randGen(data[i]);
+		}
+		void randGenInt(V2D& data) {
+			for (int i = 0; i < data.size(); i++)
+				randGenInt(data[i]);
 		}
 		void randGen(V3D& data, bool initialized) {
 			if (!initialized) {
@@ -187,7 +199,14 @@ namespace cnn {
 					randGen(data[i]);
 			}
 		}
+		void randGenInt(V3D& data, bool initialized) {
+			if (!initialized) {
+				for (int i = 0; i < data.size(); i++)
+					randGenInt(data[i]);
+			}
+		}
 	};
+
 	class Layer 
 #ifdef _CUDA_GPU_
 		: public LayerGPU
@@ -238,9 +257,18 @@ namespace cnn {
 		virtual V4D calculate(V4D data) { return data4D; }
 		virtual V2D calculate(V4D data, LAYER layer) { return data2D; }
 		virtual V2D calculate(V2D data) { return data2D; }
-	
+
 		virtual V2D* backward(V2D* delta) { return dummy2D; }
 		virtual V4D* backward(V4D* delta) { return dummy4D; }
+
+#ifdef _CUDA_GPU_
+		virtual V4D calculateGPU(V4D data) override { return LayerGPU::calculateGPU(data); }
+		virtual V2D calculateGPU(V2D data) override { return LayerGPU::calculateGPU(data); }
+		virtual V1D calculateGPU(V1D data) override { return LayerGPU::calculateGPU(data); }
+		virtual V2D* backwardGPU(V2D* delta) override { return LayerGPU::backwardGPU(delta); }
+#endif //_CUDA_GPU_
+
+
 
 		void deleteV4D(V4D* data) {
 			for (auto& d3d : *data) {
@@ -252,6 +280,17 @@ namespace cnn {
 				}
 				d3d.clear();
 			}
+			data->clear();
+			delete data;
+		}
+		void deleteV3D(V3D* data) {
+			for (auto& d2d : *data) {
+				for (auto& d1d : d2d) {
+					d1d.clear();
+				}
+				d2d.clear();
+			}
+
 			data->clear();
 			delete data;
 		}
@@ -440,6 +479,13 @@ namespace cnn {
 #endif //_CUDA_GPU_
 	{
 	private:
+#ifdef _CUDA_GPU_
+		//V3D* filter3D = nullptr;
+		ActivationGPU* activationGPU = nullptr;
+		unsigned int strideGPU;
+		unsigned int filterRowColGPU;
+#endif //_CUDA_GPU_
+
 		V3D* filter3D = nullptr;
 
 		int outputZ;
@@ -470,30 +516,29 @@ namespace cnn {
 		}
 		Conv(const int filterRowCol = 3, const int filterSize = 1, const int stride = 1, const int paddingSize = 1, ACTIVATION act = ACTIVATION::ReLU) {
 			this->layerType = LAYER::Conv;
-			this->stride = stride;
-			this->filterRowCol = filterRowCol;
-			this->filterSize = filterSize;
-			this->paddingSize = paddingSize;
 			this->act = act;
-#ifdef _CUDA_GPU_
-			
-			this->filter3D = new V3D(filterSize, V2D(filterRowCol, V1D(filterRowCol, 0)));
+
+			this->filter3D = new V3D(filterSize, V2D(filterRowCol, V1D(filterRowCol, 0.0f)));
 			this->randVal->randGen(*this->filter3D, initialized);
-			//this->filter1D = new V1D(filterSize * filterRowCol * filterRowCol, 0.0f);
-			//this->randVal->randGen(*this->filter1D, initialized);
+			initialized = true;
+#ifdef _CUDA_GPU_
+
+
 
 			this->setFilter3DGPU(this->filter3D);
 			this->setStrideGPU(stride);
 			this->setFilterRowColGPU(filterRowCol);
-			
+
+			//this->activationGPU = new ActivationGPU(act);
 #else
-			this->filter3D = new V3D(filterSize, V2D(filterRowCol, V1D(filterRowCol, 0)));
-			this->randVal->randGen(*this->filter3D, initialized);
-#endif
 			
-			initialized = true;
+			this->stride = stride;
+			this->filterRowCol = filterRowCol;
+			this->filterSize = filterSize;
+			this->paddingSize = paddingSize;
+
 			this->activation = new Activation(act);
-			
+#endif// _CUDA_GPU_
 		}
 		~Conv() {
 			for (auto& d2d : *filter3D) {
@@ -506,6 +551,12 @@ namespace cnn {
 			delete filter3D;
 			delete this->activation;
 		}
+#ifdef _CUDA_GPU_
+		virtual void setFilter3DGPU(V3D* filter) override {
+			ConvGPU::setFilter3DGPU(filter);
+		}
+
+#endif//
 		virtual void setFilter3D(V3D* filter) override {
 			this->filter3D = filter;
 		}
@@ -534,8 +585,17 @@ namespace cnn {
 			this->delta = delta;
 		}
 		virtual V4D calculate(V4D data) override {
+			V2D image2D = im2col(data, this->filterRowCol, (*this->filter3D).size(), this->stride);
+			V2D filter2D = filter2col((*this->filter3D), this->stride);
+			V2D imgXfilter = imageXfilter(image2D, filter2D);
+			V4D result = col2im(imgXfilter, data.size(), data[0].size(), data[0][0].size(), data[0][0][0].size(), this->filterRowCol, (*this->filter3D).size(), this->stride);
+			return result;
+		}
+		/* // 원래 코드
+		virtual V4D calculate(V4D data) override {
 			V4D actMap4D = V4D(data.size());
 
+			
 			for (int i = 0; i < data.size(); i++) {
 				actMap4D[i].resize(data[i].size() * (*filter3D).size());
 				for (int j = 0; j < data[i].size(); j++)
@@ -561,22 +621,36 @@ namespace cnn {
 				}
 			}
 
-			actMap4D = (*this->activation).calculate(actMap4D);
-
-			return actMap4D;
-		}
-		virtual V4D* backward(V4D* delta) override {
 			
+
+			actMap4D = (*this->activation).calculate(actMap4D);
+			return actMap4D;
+		}*/
+		virtual V4D* backward(V4D* delta) override {
+			std::chrono::system_clock::time_point start = std::chrono::system_clock::now();
 			V4D saveDelta = saveData4DSize;
 
 			//필터 역전
 			reverseFilter(this->filter3D);
 
+			std::chrono::duration<double>sec = std::chrono::system_clock::now() - start;
+			std::cout << "필터 역전 : " << sec.count() << "seconds" << "\n";
+
+			/////////////////////////////////////////////
+			std::chrono::system_clock::time_point start2 = std::chrono::system_clock::now();
 			Padding* padding = new Padding(this->paddingSize*2);
 			V4D temp = padding->calculate(*delta);
+
+			std::chrono::duration<double>sec2 = std::chrono::system_clock::now() - start2;
+			std::cout << "연산 : " << sec2.count() << "seconds" << "\n"; //여기가 가장 느림.
 			delete padding;
 			V4D calDelta = this->calculate(temp);
 
+			//std::chrono::duration<double>sec2 = std::chrono::system_clock::now() - start2;
+			//std::cout << "연산 : " << sec2.count() << "seconds" << "\n"; //여기가 가장 느림.
+			/////////////////////////////////////////////
+
+			std::chrono::system_clock::time_point start3 = std::chrono::system_clock::now();
 
 			V4D* result = new V4D(saveDelta);
 			for (int i = 0; i < saveDelta.size(); i++) 
@@ -586,10 +660,14 @@ namespace cnn {
 							for (int l = 0; l < saveDelta[i][j][k].size(); l++) 
 								(*result)[i][j][k][l] += calDelta[i][m][k][l];
 
+			std::chrono::duration<double>sec3 = std::chrono::system_clock::now() - start3;
+			std::cout << "result : " << sec3.count() << "seconds" << "\n";
 
+			std::chrono::system_clock::time_point start4 = std::chrono::system_clock::now();
 			//다시 필터 원래대로
 			reverseFilter(this->filter3D);
-
+			std::chrono::duration<double>sec4 = std::chrono::system_clock::now() - start4;
+			std::cout << "필터 재역전 : " << sec4.count() << "seconds" << "\n";
 			return result;
 		}
 		void reverseFilter(V3D* filter) {
@@ -607,9 +685,87 @@ namespace cnn {
 			
 			
 		}
-#ifdef _CUDA_GPU_
-		int testConv() { return 1; }
+		V2D im2col(const V4D& image, int kernelRowCol, int kernelSize, int stride) {
+			int imageSize = image.size();
+			int channel = image[0].size();
+			int height = image[0][0].size();
+			int width = image[0][0][0].size();
 
+			int output_height = (height - kernelRowCol) / stride + 1;
+			int output_width = (width - kernelRowCol) / stride + 1;
+
+			V2D col;
+			for (int i = 0; i < kernelSize; i++) {
+				for (int f = 0; f < imageSize; f++) {
+					for (int d = 0; d < channel; ++d) {
+						V1D col_entry;
+						for (int h = 0; h < output_height; ++h) {
+							for (int w = 0; w < output_width; ++w) {
+								for (int i = h * stride; i < h * stride + kernelRowCol; ++i) {
+									for (int j = w * stride; j < w * stride + kernelRowCol; ++j) {
+										col_entry.push_back(image[f][d][i][j]);
+									}
+								}
+							}
+
+						}
+						col.push_back(col_entry);
+					}
+
+				}
+			}
+			return col;
+		}
+		V2D filter2col(const V3D& filter, int stride) {
+			V2D col;
+
+			for (int i = 0; i < filter.size(); i++) {
+				V1D col1D;
+				for (int j = 0; j < filter[i].size(); j++) {
+					for (int k = 0; k < filter[i][j].size(); k++) {
+						col1D.push_back(filter[i][j][k]);
+					}
+				}
+				col.push_back(col1D);
+			}
+			return col;
+		}
+
+		V4D col2im(const V2D& col, int imageSize, int channel, int height, int width, int kernelRowCol, int kernelSize, int stride) {
+			int outputH = (height - kernelRowCol) / stride + 1;
+			int outputW = (width - kernelRowCol) / stride + 1;
+
+			// 48 9604
+			// (2 X [3 X 8]) (98 X 98)
+			V4D image = V4D(imageSize, V3D(channel * kernelSize, V2D(outputH, V1D(outputW, 0.0f))));
+
+			for (int i = 0; i < imageSize; i++) { // 이미지 크기는 고정
+				for (int j = 0; j < kernelSize * channel; j++) { // 커널 크기는 kernelSize * channel 곱셈
+					for (int k = 0; k < outputH; k++) {
+						for (int l = 0; l < outputW; l++) {
+							image[i][j][k][l] = col[i * (kernelSize * channel) + j][k * outputW + l];
+						}
+					}
+				}
+			}
+
+			return image;
+		}
+		V2D imageXfilter(V2D image, V2D filter) {
+			V2D result = V2D(image.size(), V1D(image[0].size() / filter[0].size(), 0.0f));
+			for (int i = 0; i < image.size(); i++) {
+				for (int j = 0; j < image[i].size(); j++) {
+					result[i][(j / filter[0].size()) % filter[0].size()] += image[i][j] * filter[i % filter.size()][j % filter[i % filter.size()].size()];
+				}
+			}
+			return result;
+		}
+
+
+#ifdef _CUDA_GPU_
+		virtual V4D calculateGPU(V4D data) override {
+			return ConvGPU::calculateGPU(data);
+		}
 
 #endif //_CUDA_GPU_
 	};
@@ -630,6 +786,9 @@ namespace cnn {
 		Pooling(POOLING poolingName = POOLING::Max) {
 			this->layerType = LAYER::Pool;
 			this->poolingName = poolingName;
+		}
+		~Pooling() {
+			deleteV4D(delta);
 		}
 		virtual V4D getData4D() override {
 			return this->data4D;
@@ -821,7 +980,7 @@ namespace cnn {
 		V3D* weight3D = new V3D();
 		V3D initWeight;
 		V1D* result = nullptr;
-		RandomGen* randomGen = new RandomGen(-1.0, 1.0);
+		RandomGen* randomGen = new RandomGen(-1.0f, 1.0f);
 		bool initialized = false;
 		Activation* activation = nullptr;
 
@@ -850,6 +1009,7 @@ namespace cnn {
 			this->activation = new Activation(act);
 		}
 		~FullyConnected() {
+			deleteV3D(weight3D);
 			delete this->randomGen;
 		}
 		virtual V2D getData2D() override {
@@ -877,8 +1037,6 @@ namespace cnn {
 			//data크기: 2 128
 			//output크기: 2 4
 			//-->weight크기: 2 128 4
-			
-		
 			(*this->weight3D).resize(data.size());
 			for (int i = 0; i < data.size(); i++) {
 				(*this->weight3D)[i].resize(data[i].size());
@@ -886,7 +1044,6 @@ namespace cnn {
 					(*this->weight3D)[i][j].resize(this->denseSize);
 				}
 			}
-			
 			randomGen->randGen(*this->weight3D, initialized);
 			initialized = true;
 
@@ -900,7 +1057,7 @@ namespace cnn {
 				}
 			}
 			fully = (*this->activation).calculate2D(fully);
-
+			
 			return fully;
 		}
 #ifdef _CUDA_GPU_
@@ -983,6 +1140,8 @@ namespace cnn {
 		V2D onehotLabel;
 		V2D target;
 		V2D output;
+
+
 		vector<Layer*> layers;
 
 
@@ -1103,6 +1262,8 @@ namespace cnn {
 		CNN(V4D& image, V1D label) {
 			this->image = image;
 			this->label1D = label;
+
+
 			cout << "\nimage: " << image.size() << " label: " << label.size() << "\n";
 		}
 		CNN(V4D& image, V1D label, V4D& testImage, V1D testLabel) {
@@ -1415,77 +1576,77 @@ namespace cnn {
 			this->labelSet2D = this->batchLabel(this->label1D, batchSize);
 			
 			for (int i = 0; i < epochs; i++) {
+				std::chrono::system_clock::time_point start = std::chrono::system_clock::now();
 				cout << "\nepochs:" << i+1 << "\n";
 
 				for (int j = 0; j < this->imageSet.size(); ++j) {		
-#ifdef _CUDA_GPU_
-					this->layers[0]->setData(this->imageSet3D[j]);
-#else
+
 					this->layers[0]->setData(this->imageSet[j]);
-#endif //
 
 					this->target1D = this->labelSet2D[j];
-		
 					this->feedforward(batchSize);
 					this->backward(batchSize);
-				}
 
+				}
+				std::chrono::duration<double>sec = std::chrono::system_clock::now() - start;
+				std::cout << "time : " << sec.count() << "seconds" << "\n";
 			}
 		}
 		
-		void predict(V3D image, float label) {
+		V1D predict(V3D image) {
 			V4D image4D;
 			image4D.push_back(image);
 			this->layers[0]->setData(image4D);
 			this->feedforward(1);
-			cout << "Prediction: ";
-			for (int i = 0; i < this->output.size(); i++) {
-				for (int j = 0; j < this->output[i].size(); j++) {
-					cout << this->output[i][j] << " ";
-				}
-				cout << "\n";
-			}
-			cout << "\n";
-			cout << "label: ";
-			V1D y = V1D(this->output[0].size(),0.0f);
-			y[(const int)label] = 1.0f;
 
-			for (int i = 0; i < y.size(); i++) {
-				cout << y[i] << " ";
+			std::cout << "predict: ";
+			for (int i = 0; i < output.size(); i++) {
+				std::cout << output[0][i] <<" ";
 			}
-			
-
-			cout << "\n";
-			cout << "\n";
+			std::cout << "\n";
+			return output[0];
 		}
-		
-		void accuracy() {
-			int correct = 0;
-			size_t total = this->testImage.size();
-			for (int i = 0; i < total; ++i) {
-				this->layers[0]->setData(this->testImage[i]);
-				this->feedforward(1);
-				int prediction = (int)std::distance(this->output.begin(), std::max_element(this->output.begin(), this->output.end()));
-				if (prediction == this->testLabel[i]) {
-					correct++;
+		V1D predict(V4D image) {
+			this->layers[0]->setData(image);
+			this->feedforward(1);
+			V1D prediction;
+			for (int i = 0; i < output.size(); i++) {
+				prediction.push_back(max_element(output[i].begin(), output[i].end()) - output[i].begin());
+			}
+			return prediction;
+		}
+		void accuracy(V1D predictions, V1D labels) {
+			int correct_predictions = 0;
+
+			for (size_t i = 0; i < predictions.size(); ++i) {
+				if (predictions[i] == labels[i]) {
+					correct_predictions++;
 				}
 			}
-			float acc = (float)correct / total * 100;
-			cout << "Accuracy: " << acc << "%" << endl;
+
+			float acc = static_cast<float>(correct_predictions) / predictions.size();
+			std::cout << "Accuracy: " << acc * 100 << "%\n";
+
 		}
-		
 		void feedforward(int batchSize) {
+			
 			if (this->layers.size() < 2) {
 				cout << "레이어가 너무 작음.";
 				return;
 			}
 			for (int i = 0; i < this->layers.size(); ++i) {
+				std::chrono::system_clock::time_point start = std::chrono::system_clock::now();
 				const int LAST = (int)this->layers.size() - 1;
 
 				if (this->layers[i]->getLayerType() == LAYER::Conv) {
+					
 #ifdef _CUDA_GPU_
-					V2D data = this->layers[i]->getData2D();
-					this->layers[(i + 1)]->setData(this->layers[i]->calculateGPU(data));
+					std::cout << " CONV GPU 여기";
+					V4D data = this->layers[i]->getData4D();
+	
+					V4D result = this->layers[i]->calculateGPU(data);
+
+					this->layers[(i + 1)]->setData(result);
 #else
 					V4D data = this->layers[i]->getData4D();
 					this->layers[(i + 1)]->setData(this->layers[i]->calculate(data));
@@ -1538,14 +1699,18 @@ namespace cnn {
 				else {
 					cout << "\n레이어:" << i << " 에러\n";
 				}
+
+				std::chrono::duration<double>sec = std::chrono::system_clock::now() - start;
+				std::cout << "forward time : " << sec.count() << "seconds" << "\n";
 			}
 		}
 		
 		void backward(int batchSize) {
-
+			
 			for (int j = (int)this->layers.size() - 1; j >= 0; --j) {
-				
+				std::chrono::system_clock::time_point start = std::chrono::system_clock::now();
 				if (this->layers[j]->getLayerType() == LAYER::Conv) {
+					std::cout << "Backward Conv\n";
 					V4D* delta = this->layers[j + 1]->getDelta4D();
 					this->layers[j]->setDelta4D(this->layers[j]->backward(delta));
 				}
@@ -1590,7 +1755,6 @@ namespace cnn {
 				}
 
 				else if (this->layers[j]->getLayerType() == LAYER::Flatten) {
-					
 					V4D data4D = this->layers[j]->getData4D();
 					V2D* curDelta = deltaXweights(this->layers[j + 1]->getDelta2D(), this->layers[j + 1]->getWeight3D());
 					
@@ -1634,6 +1798,8 @@ namespace cnn {
 				else {
 					cout << "에러" << "\n";
 				}
+				std::chrono::duration<double>sec = std::chrono::system_clock::now() - start;
+				std::cout << "backward time : " << sec.count() << "seconds" << "\n";
 			}
 		}
 		V3D* updateWeightsFC(V3D* updateWeights, V2D* deltaFC,V2D* dActdW, OPTIMIZER opt) {
