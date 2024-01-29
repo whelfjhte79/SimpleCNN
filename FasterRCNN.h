@@ -1,8 +1,10 @@
 #ifndef FASTER_RCNN_H
 #define FASTER_RCNN_H
 
+#include"SimpleCNN.h"
 
 namespace faster_rcnn {
+	//https://www.youtube.com/watch?v=RjfgHOiBWaE
 	// https://welcome-to-dewy-world.tistory.com/110
 	// 1번 이미지에서 Conv, pooling 층로만 구성해 통과시켜서 나온 특징맵을 입력층으로 사용함.
 	// 나온 특징맵에 3x3 conv를 256(or 512) channel 만큼 수행함. //이때 padding을 1로 해서 H x W를 보존함.
@@ -38,8 +40,68 @@ namespace faster_rcnn {
 	// 
 	// 
 	//
+	class RPN {
+		V4D featureMap;
+		cnn::Conv* conv = new cnn::Conv();
+		V3D* intermediateFilter3D = nullptr;
+		V3D* classificationFilter3D = nullptr;
+		V3D* bboxRegressionFilter3D = nullptr;
+	public:
+		RPN() {
+
+		}
+		RPN(V4D& input) {
+			this->featureMap = input;
+		}
+		virtual ~RPN() {
+
+		}
+		V4D intermediate(V4D& featureMap, V3D* filter3D) {
+			
+			conv->setFilter3D(filter3D);
+			
+			cnn::Padding pad = cnn::Padding(1);
+			V4D resultFeatureMap = pad.calculate(conv->calculate(featureMap));
+			return resultFeatureMap;
+		}
+		V2D classificationForward(V4D& intermediateFeatureMap,V3D* filter3D) {
+			conv->setFilter3D(filter3D);
+			// 1x1 conv  [2(isObject) x 9(Anchor)] X channel
+			V4D featureMap = conv->calculate(intermediateFeatureMap);
+
+			cnn::Flatten flat = cnn::Flatten();
+			V2D flatFeatureMap = flat.calculate(featureMap);
+			cnn::FullyConnected fc = cnn::FullyConnected(10, cnn::ACTIVATION::Softmax);
 
 
+			return fc.calculate(flatFeatureMap);
+		}
+		V4D bboxRegressionForward(V4D& intermediateFeatureMap,V3D* filter3D) {
+			conv->setFilter3D(filter3D);
+			// 1x1 conv  [4(bbox) x 9(Anchor)] x channel
+
+			cnn::Padding pad = cnn::Padding(1);
+			
+			V4D resultFeatureMap = conv->calculate(pad.calculate(intermediateFeatureMap));
+			return resultFeatureMap;
+		}
+		void classificationBackward() {
+
+		}
+		void bboxRegressionBackward() {
+
+		}
+		void forward() {
+
+		}
+		void backward() {
+
+		}
+	};
+	class FasterRCNN {
+		float IoU;
+
+	};
 
 
 }

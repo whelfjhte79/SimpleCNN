@@ -206,7 +206,37 @@ namespace cnn {
 			}
 		}
 	};
+	class MemoryManager {
+	public:
+		void deleteV2D(V2D* data) {
+			static int i = 0;
+			if (data) {
+				for (auto d1d : *data) {
+					d1d.clear();
+				}
+				data->clear();
 
+			}
+	}
+		void deleteV3D(V3D* data) {
+			if (data) {
+				for (auto d2d : *data) {
+					deleteV2D(&d2d);
+				}
+				data->clear();
+
+			}
+		}
+		void deleteV4D(V4D* data) {
+			if (data) {
+				for (auto d3d : *data) {
+					deleteV3D(&d3d);
+				}
+				data->clear();
+			}
+
+		}
+	};
 	class Layer 
 #ifdef _CUDA_GPU_
 		: public LayerGPU
@@ -221,7 +251,7 @@ namespace cnn {
 		ACTIVATION act;
 		POOLING poolingName;
 		int denseSize;
-	
+		MemoryManager* memoryManager = new MemoryManager();
 		V4D data4D;
 		V3D data3D;
 		V2D data2D;
@@ -233,18 +263,18 @@ namespace cnn {
 		virtual V3D getData3D() { return this->data3D; }
 		virtual V2D getData2D() { return this->data2D; }
 		virtual V1D getData1D() { return this->data1D; }
-		V4D* dummy4D;
-		V3D* dummy3D;
-		V2D* dummy2D;
-		V1D* dummy1D;
-		virtual void setData(V4D data) {}
-		virtual void setData(V3D data) {}
-		virtual void setData(V2D data) {}
-		virtual void setData(V1D data) {}
+		V4D* dummy4D = nullptr;
+		V3D* dummy3D = nullptr;
+		V2D* dummy2D = nullptr;
+		V1D* dummy1D = nullptr;
+		virtual void setData(V4D& data) {}
+		virtual void setData(V3D& data) {}
+		virtual void setData(V2D& data) {}
+		virtual void setData(V1D& data) {}
 	
 		virtual void setFilter3D(V3D* filter) {}
 		virtual V3D* getFilter3D() { return dummy3D; }
-		virtual void setWeight(V1D weight) {}
+		virtual void setWeight(V1D* weight) {}
 		virtual V1D* getWeight1D() { return dummy1D; }
 		virtual V2D* getWeight2D() { return dummy2D; }
 		virtual V3D* getWeight3D() { return dummy3D; }
@@ -254,55 +284,27 @@ namespace cnn {
 		virtual V4D* getDelta4D() { return this->dummy4D; }
 		virtual void setDelta2D(V2D* delta){}
 		virtual void setDelta4D(V4D* delta) {}
-		virtual V4D calculate(V4D data) { return data4D; }
-		virtual V2D calculate(V4D data, LAYER layer) { return data2D; }
-		virtual V2D calculate(V2D data) { return data2D; }
+		virtual V4D calculate(V4D& data) { return data4D; }
+		virtual V2D calculate(V4D& data, LAYER layer) { return data2D; }
+		virtual V2D calculate(V2D& data) { return data2D; }
 
 		virtual V2D* backward(V2D* delta) { return dummy2D; }
 		virtual V4D* backward(V4D* delta) { return dummy4D; }
 
 #ifdef _CUDA_GPU_
-		virtual V4D calculateGPU(V4D data) override { return LayerGPU::calculateGPU(data); }
-		virtual V2D calculateGPU(V2D data) override { return LayerGPU::calculateGPU(data); }
-		virtual V1D calculateGPU(V1D data) override { return LayerGPU::calculateGPU(data); }
+		virtual V4D calculateGPU(V4D& data) override { return LayerGPU::calculateGPU(data); }
+		virtual V2D calculateGPU(V2D& data) override { return LayerGPU::calculateGPU(data); }
+		virtual V1D calculateGPU(V1D& data) override { return LayerGPU::calculateGPU(data); }
 		virtual V2D* backwardGPU(V2D* delta) override { return LayerGPU::backwardGPU(delta); }
 #endif //_CUDA_GPU_
 
-
-
-		void deleteV4D(V4D* data) {
-			for (auto& d3d : *data) {
-				for (auto& d2d : d3d) {
-					for (auto& d1d : d2d) {
-						d1d.clear();
-					}
-					d2d.clear();
-				}
-				d3d.clear();
-			}
-			data->clear();
-			delete data;
-		}
-		void deleteV3D(V3D* data) {
-			for (auto& d2d : *data) {
-				for (auto& d1d : d2d) {
-					d1d.clear();
-				}
-				d2d.clear();
-			}
-
-			data->clear();
-			delete data;
-		}
-		void deleteV2D(V2D* data) {
-			for (auto& d1d : *data) {
-				d1d.clear();
-			}
-			data->clear();
-			delete data;
-		}
-
 		PrintTest printTest;
+
+		Layer() {}
+		virtual ~Layer() {
+			
+		}
+
 	};
 
 	
@@ -324,10 +326,10 @@ namespace cnn {
 		virtual V4D getData4D() override {
 			return this->data4D;
 		}
-		virtual void setData(V4D data4D) override {
+		virtual void setData(V4D& data4D) override {
 			this->data4D = data4D;
 		}
-		V1D calculate1D(V1D data) {
+		V1D calculate1D(V1D& data) {
 
 			if (this->act == ACTIVATION::ReLU) {
 				for (int i = 0; i < data.size(); ++i) {
@@ -363,7 +365,7 @@ namespace cnn {
 
 			return data;
 		}
-		V2D calculate2D(V2D data) {
+		V2D calculate2D(V2D& data) {
 			V2D result2D = V2D(0);
 			for (int i = 0; i < data.size(); i++) {
 				result2D.push_back(this->calculate1D(data[i]));
@@ -372,15 +374,15 @@ namespace cnn {
 			return result2D;
 
 		}
-		V3D calculate3D(V3D data) {
+		V3D calculate3D(V3D& data) {
 			V3D result3D = V3D(0);
 			for (int i = 0; i < data.size(); i++) {
 				result3D.push_back(this->calculate2D(data[i]));
 			}
 			return result3D;
 		}
-		V4D calculate(V4D data) override {
-			V4D result4D = V4D(0);
+		V4D calculate(V4D& data) override {
+			V4D result4D;
 			for (int i = 0; i < data.size(); i++) {
 				result4D.push_back(this->calculate3D(data[i]));
 			}
@@ -396,16 +398,21 @@ namespace cnn {
 #endif //_CUDA_GPU_
 	{
 	private:
-		V4D* delta = nullptr;
+		V4D* delta = new V4D();
+		V4D* calDelta = new V4D();
 	public:
 		Padding(int paddingSize = 2) {
 			this->layerType = LAYER::Padding;
 			this->paddingSize = paddingSize;
 		}
+		virtual ~Padding() override {
+			memoryManager->deleteV4D(delta);
+			memoryManager->deleteV4D(calDelta);
+		}
 		virtual V4D getData4D() override {
 			return this->data4D;
 		}
-		virtual void setData(V4D data4D) override {
+		virtual void setData(V4D& data4D) override {
 			this->data4D = data4D;
 		}
 		virtual V4D* getDelta4D() override {
@@ -437,7 +444,7 @@ namespace cnn {
 			}
 			return paddedData;
 		}
-		virtual V4D calculate(V4D data) override {
+		virtual V4D calculate(V4D& data) override {
 
 			V4D actMap4D = V4D(data.size());
 			int P = this->paddingSize * 2;
@@ -454,8 +461,11 @@ namespace cnn {
 		virtual V4D* backward(V4D* delta) override {
 			// 패딩만큼 제거해야됨
 
-			V4D* calDelta = new V4D((*delta));
+			//V4D* calDelta = new V4D((*delta));
+			
+			(*calDelta).resize((*delta).size());
 			for (int i = 0; i < (*delta).size(); i++) {
+				(*calDelta)[i].resize((*delta)[i].size());
 				for (int j = 0; j < (*delta)[i].size(); j++) {
 					(*calDelta)[i][j].resize((*delta)[i][j].size() - (this->paddingSize * 2));
 					for (int k = 0; k < (*delta)[i][j].size() - (this->paddingSize * 2); k++) {
@@ -491,11 +501,18 @@ namespace cnn {
 		int outputZ;
 		int outputY;
 		int outputX;
+		int saveDataSize;
+		int saveDataColSize;
+		int saveDataYSize;
+		int saveDataXSize;
 		V4D actMap4D;
 		V4D saveData4DSize;
 		V3D initFilter;
-		V4D* delta = nullptr;
-		
+		V2D* col = new V2D();
+		V4D* delta = new V4D();
+		V2D* imgXFilter = new V2D();
+		V4D* image = new V4D();
+		V4D* backwardDeltaResult = new V4D();
 		Activation* activation = nullptr;
 		RandomGen* randVal = new RandomGen(-0.1f, 0.1f);
 		bool initialized = false;
@@ -519,7 +536,7 @@ namespace cnn {
 			this->act = act;
 
 			this->filter3D = new V3D(filterSize, V2D(filterRowCol, V1D(filterRowCol, 0.0f)));
-			this->randVal->randGen(*this->filter3D, initialized);
+			//this->randVal->randGen(*this->filter3D, initialized);
 			initialized = true;
 #ifdef _CUDA_GPU_
 
@@ -541,15 +558,13 @@ namespace cnn {
 #endif// _CUDA_GPU_
 		}
 		~Conv() {
-			for (auto& d2d : *filter3D) {
-				for (auto& d1d : d2d) {
-					d1d.clear();
-				}
-				d2d.clear();
-			}
-			filter3D->clear();
-			delete filter3D;
 			delete this->activation;
+			memoryManager->deleteV2D(col);
+			memoryManager->deleteV2D(imgXFilter);
+			memoryManager->deleteV4D(image);
+			memoryManager->deleteV3D(filter3D);
+			memoryManager->deleteV4D(delta);
+			memoryManager->deleteV4D(backwardDeltaResult);
 		}
 #ifdef _CUDA_GPU_
 		virtual void setFilter3DGPU(V3D* filter) override {
@@ -566,16 +581,16 @@ namespace cnn {
 		virtual V4D getData4D() override {
 			return this->data4D;
 		}
-		virtual void setData(V4D data4D) override {
+		virtual void setData(V4D& data4D) override {
 			this->data4D = data4D;
 		}
-		virtual void setData(V3D data3D) override {
+		virtual void setData(V3D& data3D) override {
 			this->data3D = data3D;
 		}
-		virtual void setData(V2D data2D) override {
+		virtual void setData(V2D& data2D) override {
 			this->data2D = data2D;
 		}
-		virtual void setData(V1D data1D) override {
+		virtual void setData(V1D& data1D) override {
 			this->data1D = data1D;
 		}
 		virtual V4D* getDelta4D() override {
@@ -584,12 +599,18 @@ namespace cnn {
 		virtual void setDelta4D(V4D* delta) override {
 			this->delta = delta;
 		}
-		virtual V4D calculate(V4D data) override {
-			V2D image2D = im2col(data, this->filterRowCol, (*this->filter3D).size(), this->stride);
-			V2D filter2D = filter2col((*this->filter3D), this->stride);
-			V2D imgXfilter = imageXfilter(image2D, filter2D);
-			V4D result = col2im(imgXfilter, data.size(), data[0].size(), data[0][0].size(), data[0][0][0].size(), this->filterRowCol, (*this->filter3D).size(), this->stride);
-			return result;
+		virtual V4D calculate(V4D& data) override {
+			saveDataSize = data.size();
+			saveDataColSize = data[0].size();
+			saveDataYSize = data[0][0].size();
+			saveDataXSize = data[0][0][0].size();
+
+			V2D* image2D = im2col(data, this->filterRowCol, (*this->filter3D).size(), this->stride);
+			V2D filter2D = filter2col(this->filter3D, this->stride);
+			V2D* imgXfilter = imageXfilter(image2D, filter2D);
+			V4D* result = col2im(imgXfilter, data.size(), data[0].size(), data[0][0].size(), data[0][0][0].size(), this->filterRowCol, (*this->filter3D).size(), this->stride);
+			V4D actMap4D = this->activation->calculate(*result);
+			return actMap4D;
 		}
 		/* // 원래 코드
 		virtual V4D calculate(V4D data) override {
@@ -627,65 +648,56 @@ namespace cnn {
 			return actMap4D;
 		}*/
 		virtual V4D* backward(V4D* delta) override {
-			std::chrono::system_clock::time_point start = std::chrono::system_clock::now();
-			V4D saveDelta = saveData4DSize;
+	
+			int saveDeltaSize = this->saveDataSize;
+			int saveDeltaColSize = this->saveDataColSize;
+			int saveDeltaYSize = this->saveDataYSize;
+			int saveDeltaXSize = this->saveDataXSize;
 
 			//필터 역전
 			reverseFilter(this->filter3D);
-
-			std::chrono::duration<double>sec = std::chrono::system_clock::now() - start;
-			std::cout << "필터 역전 : " << sec.count() << "seconds" << "\n";
-
-			/////////////////////////////////////////////
-			std::chrono::system_clock::time_point start2 = std::chrono::system_clock::now();
-			Padding* padding = new Padding(this->paddingSize*2);
-			V4D temp = padding->calculate(*delta);
-
-			std::chrono::duration<double>sec2 = std::chrono::system_clock::now() - start2;
-			std::cout << "연산 : " << sec2.count() << "seconds" << "\n"; //여기가 가장 느림.
-			delete padding;
+			Padding padding = Padding(this->paddingSize*2);
+			V4D temp = padding.calculate(*delta);	
 			V4D calDelta = this->calculate(temp);
+			
+		
 
-			//std::chrono::duration<double>sec2 = std::chrono::system_clock::now() - start2;
-			//std::cout << "연산 : " << sec2.count() << "seconds" << "\n"; //여기가 가장 느림.
-			/////////////////////////////////////////////
+			(*this->backwardDeltaResult).resize(saveDeltaSize);
 
-			std::chrono::system_clock::time_point start3 = std::chrono::system_clock::now();
+			for (int i = 0; i < saveDeltaSize; i++) {
+				(*this->backwardDeltaResult)[i].resize(saveDeltaColSize);
+				for (int j = 0; j < saveDeltaColSize; j++) {
+					(*this->backwardDeltaResult)[i][j].resize(saveDeltaYSize);
+					for (int k = 0; k < saveDeltaYSize; k++)
+						(*this->backwardDeltaResult)[i][j][k].resize(saveDeltaXSize, 0.0f);
 
-			V4D* result = new V4D(saveDelta);
-			for (int i = 0; i < saveDelta.size(); i++) 
-				for (int j = 0; j < saveDelta[i].size(); j++) 
-					for (int m = 0; m < calDelta[i].size(); m++) 
-						for (int k = 0; k < saveDelta[i][j].size(); k++) 
-							for (int l = 0; l < saveDelta[i][j][k].size(); l++) 
-								(*result)[i][j][k][l] += calDelta[i][m][k][l];
+				}
+				for (int j = 0; j < saveDeltaColSize; j++)
+					for (int m = 0; m < calDelta[i].size(); m++)
+						for (int k = 0; k < saveDeltaYSize; k++)
+							for (int l = 0; l < saveDeltaXSize; l++)
+								(*backwardDeltaResult)[i][j][k][l] += calDelta[i][m][k][l];
+			}
 
-			std::chrono::duration<double>sec3 = std::chrono::system_clock::now() - start3;
-			std::cout << "result : " << sec3.count() << "seconds" << "\n";
-
-			std::chrono::system_clock::time_point start4 = std::chrono::system_clock::now();
+		
 			//다시 필터 원래대로
 			reverseFilter(this->filter3D);
-			std::chrono::duration<double>sec4 = std::chrono::system_clock::now() - start4;
-			std::cout << "필터 재역전 : " << sec4.count() << "seconds" << "\n";
-			return result;
+			return backwardDeltaResult;
 		}
 		void reverseFilter(V3D* filter) {
-			V3D reverse = *filter;
+			V3D* reverse = filter;
 
-			for (int i = 0; i < (*filter).size(); i++) 
-				for (int j = 0; j < (*filter)[i].size(); j++) 
-					for (int k = 0; k < (*filter)[i][j].size(); k++) 
-						reverse[i][(*filter)[i].size() - j - 1][(*filter)[i][j].size() - k - 1] = (*filter)[i][j][k];
-			
-			for (int i = 0; i < (*filter).size(); i++) 
-				for (int j = 0; j < (*filter)[i].size(); j++) 
-					for (int k = 0; k < (*filter)[i][j].size(); k++) 
-						(*filter)[i][j][k] = reverse[i][j][k];
-			
-			
+			for (int i = 0; i < (*filter).size(); i++)
+				for (int j = 0; j < (*filter)[i].size(); j++)
+					for (int k = 0; k < (*filter)[i][j].size(); k++)
+						(*reverse)[i][(*filter)[i].size() - j - 1][(*filter)[i][j].size() - k - 1] = (*filter)[i][j][k];
+
+			for (int i = 0; i < (*filter).size(); i++)
+				for (int j = 0; j < (*filter)[i].size(); j++)
+					for (int k = 0; k < (*filter)[i][j].size(); k++)
+						(*filter)[i][j][k] = (*reverse)[i][j][k];
 		}
-		V2D im2col(const V4D& image, int kernelRowCol, int kernelSize, int stride) {
+		V2D* im2col(V4D& image, int kernelRowCol, int kernelSize, int stride) {
 			int imageSize = image.size();
 			int channel = image[0].size();
 			int height = image[0][0].size();
@@ -694,56 +706,63 @@ namespace cnn {
 			int output_height = (height - kernelRowCol) / stride + 1;
 			int output_width = (width - kernelRowCol) / stride + 1;
 
-			V2D col;
+			V1D* col_entry = new V1D();
+			memoryManager->deleteV2D(col);
+
 			for (int i = 0; i < kernelSize; i++) {
 				for (int f = 0; f < imageSize; f++) {
 					for (int d = 0; d < channel; ++d) {
-						V1D col_entry;
 						for (int h = 0; h < output_height; ++h) {
 							for (int w = 0; w < output_width; ++w) {
 								for (int i = h * stride; i < h * stride + kernelRowCol; ++i) {
 									for (int j = w * stride; j < w * stride + kernelRowCol; ++j) {
-										col_entry.push_back(image[f][d][i][j]);
+										(*col_entry).push_back(image[f][d][i][j]);
 									}
 								}
 							}
 
 						}
-						col.push_back(col_entry);
+						(*col).push_back(*col_entry);
+						(*col_entry).clear();
 					}
-
 				}
 			}
+
+			delete col_entry;
 			return col;
 		}
-		V2D filter2col(const V3D& filter, int stride) {
-			V2D col;
+		V2D filter2col(V3D* filter, int stride) {
+			V2D filterToCol;
 
-			for (int i = 0; i < filter.size(); i++) {
+			for (int i = 0; i < (*filter).size(); i++) {
 				V1D col1D;
-				for (int j = 0; j < filter[i].size(); j++) {
-					for (int k = 0; k < filter[i][j].size(); k++) {
-						col1D.push_back(filter[i][j][k]);
+				for (int j = 0; j < (*filter)[i].size(); j++) {
+					for (int k = 0; k < (*filter)[i][j].size(); k++) {
+						col1D.push_back((*filter)[i][j][k]);
 					}
 				}
-				col.push_back(col1D);
+				filterToCol.push_back(col1D);
 			}
-			return col;
+
+			return filterToCol;
 		}
 
-		V4D col2im(const V2D& col, int imageSize, int channel, int height, int width, int kernelRowCol, int kernelSize, int stride) {
+		V4D* col2im(V2D* col, int imageSize, int channel, int height, int width, int kernelRowCol, int kernelSize, int stride) {
 			int outputH = (height - kernelRowCol) / stride + 1;
 			int outputW = (width - kernelRowCol) / stride + 1;
 
 			// 48 9604
 			// (2 X [3 X 8]) (98 X 98)
-			V4D image = V4D(imageSize, V3D(channel * kernelSize, V2D(outputH, V1D(outputW, 0.0f))));
-
+			//V4D image = V4D(imageSize, V3D(channel * kernelSize, V2D(outputH, V1D(outputW, 0.0f))));
+			(*this->image).resize(imageSize);
 			for (int i = 0; i < imageSize; i++) { // 이미지 크기는 고정
+				(*this->image)[i].resize(channel * kernelSize);
 				for (int j = 0; j < kernelSize * channel; j++) { // 커널 크기는 kernelSize * channel 곱셈
+					(*this->image)[i][j].resize(outputH);
 					for (int k = 0; k < outputH; k++) {
+						(*this->image)[i][j][k].resize(outputW);
 						for (int l = 0; l < outputW; l++) {
-							image[i][j][k][l] = col[i * (kernelSize * channel) + j][k * outputW + l];
+							(*this->image)[i][j][k][l] = (*col)[i * (kernelSize * channel) + j][k * outputW + l];
 						}
 					}
 				}
@@ -751,19 +770,25 @@ namespace cnn {
 
 			return image;
 		}
-		V2D imageXfilter(V2D image, V2D filter) {
-			V2D result = V2D(image.size(), V1D(image[0].size() / filter[0].size(), 0.0f));
-			for (int i = 0; i < image.size(); i++) {
-				for (int j = 0; j < image[i].size(); j++) {
-					result[i][(j / filter[0].size()) % filter[0].size()] += image[i][j] * filter[i % filter.size()][j % filter[i % filter.size()].size()];
+		V2D* imageXfilter(V2D* image, V2D& filter) {
+			//V2D imgXFilter = V2D((*image).size(), V1D((*image)[0].size() / filter[0].size(), 0.0f));
+			imgXFilter->resize((*image).size());
+			for (int i = 0; i < (*image).size(); i++) {
+				(*imgXFilter)[i].resize((*image)[0].size() / filter[0].size(), 0.0f);
+			}
+
+			for (int i = 0; i < (*image).size(); i++) {
+				for (int j = 0; j < (*image)[i].size(); j++) {
+					(*imgXFilter)[i][(j / filter[0].size()) % filter[0].size()] += (*image)[i][j] * filter[i % filter.size()][j % filter[i % filter.size()].size()];
 				}
 			}
-			return result;
+			return imgXFilter;
 		}
 
 
+
 #ifdef _CUDA_GPU_
-		virtual V4D calculateGPU(V4D data) override {
+		virtual V4D calculateGPU(V4D& data) override {
 			return ConvGPU::calculateGPU(data);
 		}
 
@@ -777,23 +802,32 @@ namespace cnn {
 	{
 	private:
 		
-		V4D pool;
+		V4D* pool = new V4D();
 		V4D maxPoolCoord;
 		V4D minPoolCoord;
 		V4D avgPoolCoord;
-		V4D* delta = nullptr;
+
+		V4D actMap4D;
+		V4D maxActMap4D;
+		V4D minActMap4D;
+		V4D avgActMap4D;
+		V4D* delta = new V4D();
+		V4D* poolCoord = new V4D();
+		V4D copyPool;
 	public:
 		Pooling(POOLING poolingName = POOLING::Max) {
 			this->layerType = LAYER::Pool;
 			this->poolingName = poolingName;
 		}
 		~Pooling() {
-			deleteV4D(delta);
+			memoryManager->deleteV4D(pool);
+			memoryManager->deleteV4D(delta);
+			memoryManager->deleteV4D(poolCoord);
 		}
 		virtual V4D getData4D() override {
 			return this->data4D;
 		}
-		virtual void setData(V4D data4D) override {
+		virtual void setData(V4D& data4D) override {
 			this->data4D = data4D;
 		}
 		virtual V4D* getDelta4D() override {
@@ -802,7 +836,7 @@ namespace cnn {
 		virtual void setDelta4D(V4D* delta) override {
 			this->delta = delta;
 		}
-		virtual V4D calculate(V4D data) override {
+		virtual V4D calculate(V4D& data) override {
 			maxPoolCoord = data;
 			for (int i = 0; i < data.size(); i++) 
 				for (int j = 0; j < data[i].size(); j++) 
@@ -819,6 +853,9 @@ namespace cnn {
 			V4D avgActMap4D = actMap4D;
 			
 			for (int i = 0; i < data.size(); i++) {
+				maxActMap4D[i].resize(data[i].size());
+				minActMap4D[i].resize(data[i].size());
+				avgActMap4D[i].resize(data[i].size());
 				for (int j = 0; j < data[i].size(); j++) {
 					actMap4D[i][j].resize(data[i][j].size() / 2);
 					maxActMap4D[i][j].resize(data[i][j].size() / 2);
@@ -865,45 +902,42 @@ namespace cnn {
 		}
 		virtual V4D* backward(V4D* delta) override {
 
-			V4D poolCoord;
 			if (this->poolingName == POOLING::Max) {
-				pool = expandDelta(delta, this->maxPoolCoord);
-				poolCoord = this->maxPoolCoord;
+				pool = expandDelta(delta, &this->maxPoolCoord);
+				poolCoord = &this->maxPoolCoord;
 			}
 			else if (this->poolingName == POOLING::Min) {
-				pool = expandDelta(delta, this->minPoolCoord);
-				poolCoord = this->minPoolCoord;
+				pool = expandDelta(delta, &this->minPoolCoord);
+				poolCoord = &this->minPoolCoord;
 			}
 			else if (this->poolingName == POOLING::Average) {
-				pool = expandDelta(delta, this->avgPoolCoord);
-				V4D* copyPool = new V4D(pool);
-				return copyPool;
+				pool = expandDelta(delta, &this->avgPoolCoord);
+				return pool;
 			}
-			for (int i = 0; i < pool.size(); i++) {
-				for (int j = 0; j < pool[i].size(); j++) {
-					for (int k = 0; k < pool[i][j].size(); k++) {
-						for (int l = 0; l < pool[i][j][k].size(); l++) {
-							pool[i][j][k][l] *= poolCoord[i][j][k][l];
+			for (int i = 0; i < (*pool).size(); i++) {
+				for (int j = 0; j < (*pool)[i].size(); j++) {
+					for (int k = 0; k < (*pool)[i][j].size(); k++) {
+						for (int l = 0; l < (*pool)[i][j][k].size(); l++) {
+							(*pool)[i][j][k][l] *= (*this->poolCoord)[i][j][k][l];
 						}
 					}
 				}
 			}
-			V4D* copyPool = new V4D(pool);
-			
-			return copyPool;
+
+			return pool;
 		}
-		V4D expandDelta(V4D* delta, V4D poolCoord) {
-			V4D output = poolCoord;
-			
+		V4D* expandDelta(V4D* delta, V4D* poolCoord) {
+			V4D* output = poolCoord;
+
 			for (int i = 0; i < (*delta).size(); i++) {
 				for (int j = 0; j < (*delta)[i].size(); j++) {
 					for (int k = 0; k < (*delta)[i][j].size(); k++) {
 						for (int l = 0; l < (*delta)[i][j][k].size(); l++) {
 							float value = (*delta)[i][j][k][l];
-							output[i][j][k * 2][l * 2] = value;
-							output[i][j][k * 2][l * 2 + 1] = value;
-							output[i][j][k * 2 + 1][l * 2] = value;
-							output[i][j][k * 2 + 1][l * 2 + 1] = value;
+							(*output)[i][j][k * 2][l * 2] = value;
+							(*output)[i][j][k * 2][l * 2 + 1] = value;
+							(*output)[i][j][k * 2 + 1][l * 2] = value;
+							(*output)[i][j][k * 2 + 1][l * 2 + 1] = value;
 						}
 					}
 				}
@@ -924,7 +958,7 @@ namespace cnn {
 	{
 	private:
 		V4D savedFlattenSize;
-		V4D* delta = nullptr;
+		V4D* delta = new V4D();
 	public:
 		Flatten() {
 			this->layerType = LAYER::Flatten;
@@ -941,22 +975,21 @@ namespace cnn {
 		virtual void setDelta4D(V4D* delta) override {
 			this->delta = delta;
 		}
-		virtual void setData(V2D data2D) override {
+		virtual void setData(V2D& data2D) override {
 			this->data2D = data2D;
 		}
-		virtual void setData(V4D data4D) override {
+		virtual void setData(V4D& data4D) override {
 			this->data4D = data4D;
 		}
-		V2D calculate(V4D data, LAYER layer) override {
-			V2D flat = V2D(0);
-			V1D flat1D;
+		V2D calculate(V4D& data, LAYER layer) override {
+			V2D flat;
 			for (int i = 0; i < data.size(); ++i) {
+				V1D flat1D;
 				for (int j = 0; j < data[i].size(); ++j)
 					for (int k = 0; k < data[i][j].size(); ++k)
 						for (int l = 0; l < data[i][j][k].size(); ++l)
 							flat1D.push_back(data[i][j][k][l]);
 				flat.push_back(flat1D);
-				flat1D.clear();
 			}
 			return flat;
 		}
@@ -975,8 +1008,6 @@ namespace cnn {
 	{
 	private:
 		vector<V2D> saveWeight1D;
-		
-		V2D* weight2D = nullptr;
 		V3D* weight3D = new V3D();
 		V3D initWeight;
 		V1D* result = nullptr;
@@ -984,7 +1015,7 @@ namespace cnn {
 		bool initialized = false;
 		Activation* activation = nullptr;
 
-		V2D* deltaFC = nullptr;
+		V2D* deltaFC = new V2D();
 	public:
 		virtual ACTIVATION getActivationType() override {
 			return this->act;
@@ -1009,13 +1040,15 @@ namespace cnn {
 			this->activation = new Activation(act);
 		}
 		~FullyConnected() {
-			deleteV3D(weight3D);
 			delete this->randomGen;
+			delete activation;
+			memoryManager->deleteV3D(weight3D);
+			memoryManager->deleteV2D(deltaFC);
 		}
 		virtual V2D getData2D() override {
 			return this->data2D;
 		}
-		virtual void setData(V2D data) override {
+		virtual void setData(V2D& data) override {
 			this->data2D = data;
 		}
 		virtual void setWeight3D(V3D* weight) override {
@@ -1031,7 +1064,7 @@ namespace cnn {
 		virtual V2D* getDelta2D() override {
 			return this->deltaFC;
 		}
-		V2D calculate(V2D data) override {
+		V2D calculate(V2D& data) override {
 			V2D fully = V2D(data.size());
 
 			//data크기: 2 128
@@ -1044,8 +1077,8 @@ namespace cnn {
 					(*this->weight3D)[i][j].resize(this->denseSize);
 				}
 			}
-			randomGen->randGen(*this->weight3D, initialized);
-			initialized = true;
+			//randomGen->randGen(*this->weight3D, initialized);
+			//initialized = true;
 
 			for (int i = 0; i < data.size(); i++) {
 				for (int j = 0; j < (*this->weight3D)[i][0].size(); j++) {
@@ -1121,6 +1154,7 @@ namespace cnn {
 	};
 	class CNN {
 	private:
+		MemoryManager memoryManager;
 		V5D imageSet;
 		V3D imageSet3D;
 		V4D image;
@@ -1140,8 +1174,9 @@ namespace cnn {
 		V2D onehotLabel;
 		V2D target;
 		V2D output;
-
-
+		V2D* deltaFC = new V2D();
+		V2D* lastDeltaFC = new V2D();
+		V4D* delta4D = new V4D();
 		vector<Layer*> layers;
 
 
@@ -1263,8 +1298,12 @@ namespace cnn {
 			this->image = image;
 			this->label1D = label;
 
-
-			cout << "\nimage: " << image.size() << " label: " << label.size() << "\n";
+			if (image.size() != label.size()) {
+				cout << "image and label size is different";
+			}
+			else {
+				cout << "\nimage: " << image.size() << " label: " << label.size() << "\n";
+			}
 		}
 		CNN(V4D& image, V1D label, V4D& testImage, V1D testLabel) {
 			this->image = image;
@@ -1288,8 +1327,8 @@ namespace cnn {
 		//		else this->trainLabel.push_back(this->Label.at(i));
 		//	}
 		//}
-			private:
-				std::string actTypeToString(ACTIVATION act) {
+	private:
+		std::string actTypeToString(ACTIVATION act) {
 					std::string actString;
 					switch (act) {
 					case ACTIVATION::TanH:
@@ -1322,7 +1361,7 @@ namespace cnn {
 					}
 					return actString;
 				}
-				ACTIVATION stringToActType(std::string type) {
+		ACTIVATION stringToActType(std::string type) {
 					ACTIVATION act;
 					if (type == "TanH")
 						act = ACTIVATION::TanH;
@@ -1710,7 +1749,6 @@ namespace cnn {
 			for (int j = (int)this->layers.size() - 1; j >= 0; --j) {
 				std::chrono::system_clock::time_point start = std::chrono::system_clock::now();
 				if (this->layers[j]->getLayerType() == LAYER::Conv) {
-					std::cout << "Backward Conv\n";
 					V4D* delta = this->layers[j + 1]->getDelta4D();
 					this->layers[j]->setDelta4D(this->layers[j]->backward(delta));
 				}
@@ -1723,24 +1761,24 @@ namespace cnn {
 					else 
 						this->target = this->oneHotEncoding(this->target1D, (int)this->output[0].size());		
 					
-					float lossValue = this->lossFunc(&this->target, &this->output, this->loss);
+					float lossValue = this->lossFunc(this->target, this->output, this->loss);
 
-					V2D* dLossdOutput = this->derivativeLoss(&this->output, &this->target, this->loss);
-					V2D* dOutputdAct = this->derivativeAct(dLossdOutput, this->layers[j]->getActivationType());
-					V2D* deltaFC = new V2D((*dLossdOutput).size(), V1D((*dLossdOutput)[0].size(), 0.0f));
+					V2D dLossdOutput = this->derivativeLoss(this->output, this->target, this->loss);
+					V2D dOutputdAct = this->derivativeAct(dLossdOutput, this->layers[j]->getActivationType());
 
-					
-					for (int i = 0; i < (*deltaFC).size(); i++) {
-						for (int j = 0; j < (*deltaFC)[i].size(); j++) {
-							(*deltaFC)[i][j] = (*dLossdOutput)[i][j] * (*dOutputdAct)[i][j];
-
+					this->lastDeltaFC->resize(dLossdOutput.size());
+					for (int i = 0; i < (*lastDeltaFC).size(); i++) {
+						(*this->lastDeltaFC)[i].resize(dLossdOutput[0].size());
+						for (int j = 0; j < (*lastDeltaFC)[i].size(); j++) {
+							(*lastDeltaFC)[i][j] = dLossdOutput[i][j] * dOutputdAct[i][j];
 						}
 					}
 
 					V2D data = this->layers[j]->getData2D();
-	
-					this->layers[j]->setWeight3D(updateWeightsFC(this->layers[j]->getWeight3D(), deltaFC, &data, this->optimizerType));
-					this->layers[j]->setDelta2D(deltaFC);
+					V3D* weight3D = this->layers[j]->getWeight3D();
+					updateWeightsFC(weight3D, lastDeltaFC, data, this->optimizerType);
+					this->layers[j]->setWeight3D(weight3D);
+					this->layers[j]->setDelta2D(lastDeltaFC);
 
 				}
 				else if (this->layers[j]->getLayerType() == LAYER::Padding) {
@@ -1756,206 +1794,215 @@ namespace cnn {
 
 				else if (this->layers[j]->getLayerType() == LAYER::Flatten) {
 					V4D data4D = this->layers[j]->getData4D();
-					V2D* curDelta = deltaXweights(this->layers[j + 1]->getDelta2D(), this->layers[j + 1]->getWeight3D());
-					
-					V2D* delta2D = new V2D((*curDelta));
-					for (int i = 0; i < (*delta2D).size(); i++) 
-						for (int k = 0; k < (*delta2D)[i].size(); k++) 
-							(*delta2D)[i][k] = (*curDelta)[i][k] * this->layers[j + 1]->getData2D()[i][k];
-						
-					
-					V4D* delta4D = new V4D(data4D);
-					for (int i = 0; i < data4D.size(); i++) {
+					V2D* del = this->layers[j + 1]->getDelta2D();
+					V3D* weight3D = this->layers[j + 1]->getWeight3D();
+					V2D curDelta = V2D((*del).size());
+					(*this->delta4D).resize(data4D.size());
+					V2D data2D = this->layers[j + 1]->getData2D();
+					for (int i = 0; i < (*del).size(); i++) {
+						curDelta[i].resize((*weight3D)[i].size());
+						for (int j = 0; j < (*weight3D)[i].size(); j++) {
+							curDelta[i][j] = 0.0f;
+							for (int l = 0; l < (*weight3D)[i][j].size(); l++) 
+								for (int k = 0; k < (*del)[i].size(); k++) 
+									curDelta[i][j] += (*del)[i][k] * (*weight3D)[i][j][k];
+						}
+
 						int idx = 0;
-						for (int j = 0; j < data4D[i].size(); j++) 
-							for (int k = 0; k < data4D[i][j].size(); k++) 
-								for (int l = 0; l < data4D[i][j][k].size(); l++) 								
-									(*delta4D)[i][j][k][l] = (*delta2D)[i][idx++];
+						(*this->delta4D)[i].resize(data4D[i].size());
+						for (int j = 0; j < data4D[i].size(); j++) {
+							(*this->delta4D)[i][j].resize(data4D[i][j].size());
+							for (int k = 0; k < data4D[i][j].size(); k++) {
+								(*this->delta4D)[i][j][k].resize(data4D[i][j][k].size());
+								for (int l = 0; l < data4D[i][j][k].size(); l++) {
+									(*this->delta4D)[i][j][k][l] = curDelta[i][idx] * data2D[i][idx];
+									idx++;
+								}
+							}
+						}
 					}
-					
+
 					this->layers[j]->setDelta4D(delta4D);
-					
+
 				}
 				else if (this->layers[j]->getLayerType() == LAYER::FC) {
 
 					V2D* delta2D = this->layers[j + 1]->getDelta2D();
 					V3D* weight3D = this->layers[j + 1]->getWeight3D();
-					V2D* deltaXw = deltaXweights(delta2D, weight3D);
-					V2D* dOutputdAct = this->derivativeAct(deltaXw, this->layers[j]->getActivationType());
+					V2D deltaXw = deltaXweights(delta2D, weight3D);
+					V2D dOutputdAct = this->derivativeAct(deltaXw, this->layers[j]->getActivationType());
 					V2D dataW = this->layers[j]->getData2D();
-					V2D* dActdW = &dataW;
+					V2D dActdW = dataW;
 
-					V2D* deltaFC = new V2D((*dOutputdAct));
-					for (int i = 0; i < (*deltaXw).size(); i++) {
-						for (int j = 0; j < (*deltaXw)[i].size(); j++) {
-							(*deltaFC)[i][j] = (*deltaXw)[i][j] * (*dOutputdAct)[i][j];
+					(*this->deltaFC).resize(dOutputdAct.size());
+					for (int i = 0; i < deltaXw.size(); i++) {
+						(*this->deltaFC)[i].resize(deltaXw[i].size(), 0.0f);
+						for (int j = 0; j < deltaXw[i].size(); j++) {
+							(*this->deltaFC)[i][j] = deltaXw[i][j] * dOutputdAct[i][j];
 						}
 					}
-
-					this->layers[j]->setWeight3D(this->updateWeightsFC(this->layers[j]->getWeight3D(), deltaFC, dActdW, this->optimizerType));
+					V3D* currentWeight3D = this->layers[j]->getWeight3D();
+					this->updateWeightsFC(currentWeight3D, deltaFC, dActdW, this->optimizerType);
+					this->layers[j]->setWeight3D(currentWeight3D);
 					this->layers[j]->setDelta2D(deltaFC);
 				}
 				else {
 					cout << "에러" << "\n";
 				}
-				std::chrono::duration<double>sec = std::chrono::system_clock::now() - start;
-				std::cout << "backward time : " << sec.count() << "seconds" << "\n";
 			}
 		}
-		V3D* updateWeightsFC(V3D* updateWeights, V2D* deltaFC,V2D* dActdW, OPTIMIZER opt) {
-			
+		void updateWeightsFC(V3D* updateWeights, V2D* deltaFC, V2D& dActdW, OPTIMIZER opt) {
+
 			clipDelta(deltaFC);
 
 			if (opt == OPTIMIZER::Mini_SGD) {
 				for (int i = 0; i < (*updateWeights).size(); i++)
 					for (int j = 0; j < (*updateWeights)[i].size(); j++)
 						for (int k = 0; k < (*updateWeights)[i][j].size(); k++)
-							(*updateWeights)[i][j][k] = optimizer->miniSGD(this->learningRate,(*updateWeights)[i][j][k], (*deltaFC)[i][k] * (*dActdW)[i][j]);
-							//(*updateWeights)[i][j][k] -= this->leaningRate * (*deltaFC)[i][k] * (*dActdW)[i][j];
+							(*updateWeights)[i][j][k] = optimizer->miniSGD(this->learningRate, (*updateWeights)[i][j][k], (*deltaFC)[i][k] * dActdW[i][j]);
+				//(*updateWeights)[i][j][k] -= this->leaningRate * (*deltaFC)[i][k] * (*dActdW)[i][j];
 			}
 			else if (opt == OPTIMIZER::Momentum) {
 				for (int i = 0; i < (*updateWeights).size(); i++)
 					for (int j = 0; j < (*updateWeights)[i].size(); j++)
 						for (int k = 0; k < (*updateWeights)[i][j].size(); k++)
-							(*updateWeights)[i][j][k] = optimizer->momentum(this->learningRate, (*updateWeights)[i][j][k], ((*deltaFC)[i][k] * (*dActdW)[i][j]));
+							(*updateWeights)[i][j][k] = optimizer->momentum(this->learningRate, (*updateWeights)[i][j][k], ((*deltaFC)[i][k] * dActdW[i][j]));
 			}
 			else if (opt == OPTIMIZER::Adagrad) {
 				for (int i = 0; i < (*updateWeights).size(); i++)
 					for (int j = 0; j < (*updateWeights)[i].size(); j++)
 						for (int k = 0; k < (*updateWeights)[i][j].size(); k++)
-							(*updateWeights)[i][j][k] = optimizer->adagrad(this->learningRate, (*updateWeights)[i][j][k], ((*deltaFC)[i][k] * (*dActdW)[i][j]));
+							(*updateWeights)[i][j][k] = optimizer->adagrad(this->learningRate, (*updateWeights)[i][j][k], ((*deltaFC)[i][k] * dActdW[i][j]));
 			}
 			else if (opt == OPTIMIZER::RMSProp) {
 				for (int i = 0; i < (*updateWeights).size(); i++)
 					for (int j = 0; j < (*updateWeights)[i].size(); j++)
 						for (int k = 0; k < (*updateWeights)[i][j].size(); k++)
-							(*updateWeights)[i][j][k] = optimizer->rmsProp(this->learningRate, (*updateWeights)[i][j][k], ((*deltaFC)[i][k] * (*dActdW)[i][j]));
+							(*updateWeights)[i][j][k] = optimizer->rmsProp(this->learningRate, (*updateWeights)[i][j][k], ((*deltaFC)[i][k] * dActdW[i][j]));
 			}
 			else if (opt == OPTIMIZER::Adam) {
 				float v, m;
 				for (int i = 0; i < (*updateWeights).size(); i++)
 					for (int j = 0; j < (*updateWeights)[i].size(); j++)
 						for (int k = 0; k < (*updateWeights)[i][j].size(); k++)
-							(*updateWeights)[i][j][k] = optimizer->adam(this->learningRate, (*updateWeights)[i][j][k], ((*deltaFC)[i][k] * (*dActdW)[i][j]),m,v,this->epochsCount, 0.9f, 0.999f);
+							(*updateWeights)[i][j][k] = optimizer->adam(this->learningRate, (*updateWeights)[i][j][k], ((*deltaFC)[i][k] * dActdW[i][j]), m, v, this->epochsCount, 0.9f, 0.999f);
 			}
 			else if (opt == OPTIMIZER::Nadam) {
 				float v, m;
 				for (int i = 0; i < (*updateWeights).size(); i++)
 					for (int j = 0; j < (*updateWeights)[i].size(); j++)
 						for (int k = 0; k < (*updateWeights)[i][j].size(); k++)
-							(*updateWeights)[i][j][k] = optimizer->nadam(this->learningRate, (*updateWeights)[i][j][k], ((*deltaFC)[i][k] * (*dActdW)[i][j]), m, v, this->epochsCount, 0.9f, 0.999f);
+							(*updateWeights)[i][j][k] = optimizer->nadam(this->learningRate, (*updateWeights)[i][j][k], ((*deltaFC)[i][k] * dActdW[i][j]), m, v, this->epochsCount, 0.9f, 0.999f);
 			}
-			
-			
-			return updateWeights;
+
 		}
-		float lossFunc(V2D* target, V2D* output, LOSS loss) {
+		float lossFunc(V2D& target, V2D& output, LOSS loss) {
 			float returnLoss = 0.0f;
 			float mse = 0.0f;
 			float crossEntropy = 0.0f;
 			float error = 0.0f;
 			float rmse = 0.0f;
-			if ((*output).size() == (*target).size() && (*output)[0].size() == (*target)[0].size()) {
+			if (output.size() == target.size() && output[0].size() == target[0].size()) {
 
-				for (int i = 0; i < (*output).size(); i++) {
-					for (int j = 0; j < (*output)[i].size(); j++) {
-						error = (*target)[i][j] - (*output)[i][j];
+				for (int i = 0; i < output.size(); i++) {
+					for (int j = 0; j < output[i].size(); j++) {
+						error = target[i][j] - output[i][j];
 						mse += error * error;
-						crossEntropy += (*target)[i][j] * log((*output)[i][j] + 1e-6f );
+						crossEntropy += target[i][j] * log(output[i][j] + 1e-6f);
 					}
 				}
 				crossEntropy = -crossEntropy;
 				rmse = sqrt(mse);
 				mse /= output[0].size();
 			}
-			if (loss == LOSS::BinaryCrossentropy || loss == LOSS::CategoricalCrossentropy || loss == LOSS::SparseCategoricalCrossentropy || loss == LOSS::CategoricalCrossentropy) 
+			if (loss == LOSS::BinaryCrossentropy || loss == LOSS::CategoricalCrossentropy || loss == LOSS::SparseCategoricalCrossentropy || loss == LOSS::CategoricalCrossentropy)
 				returnLoss = crossEntropy;
-			else if (loss == LOSS::MSE) 
+			else if (loss == LOSS::MSE)
 				returnLoss = mse;
-			else if(loss == LOSS::RMSE) 
+			else if (loss == LOSS::RMSE)
 				returnLoss = rmse;
-			
+
 			return returnLoss;
 
 		}
-		V2D* derivativeLoss(V2D* target, V2D* output, LOSS loss) {
-			V2D* deLoss = new V2D((*output).size(), V1D((*output)[0].size()));
-			V2D deMSE = V2D((*output).size(), V1D((*output)[0].size(), 0.0f));
-			V2D deRMSE = V2D((*output).size(), V1D((*output)[0].size(), 0.0f));
-			V2D deBinCrossEntropy = V2D((*output).size(), V1D((*output)[0].size(), 0.0f));
-			V2D deCategoricalCrossEntropy = V2D((*output).size(), V1D((*output)[0].size(), 0.0f));
-			V2D deSparseCategoricalCrossEntropy = V2D((*output).size(), V1D((*output)[0].size(), 0.0f));
+		V2D derivativeLoss(V2D& target, V2D& output, LOSS loss) {
+			V2D deLoss = V2D(output.size(), V1D(output[0].size()));
+			V2D deMSE = V2D(output.size(), V1D(output[0].size(), 0.0f));
+			V2D deRMSE = V2D(output.size(), V1D(output[0].size(), 0.0f));
+			V2D deBinCrossEntropy = V2D(output.size(), V1D(output[0].size(), 0.0f));
+			V2D deCategoricalCrossEntropy = V2D(output.size(), V1D(output[0].size(), 0.0f));
+			V2D deSparseCategoricalCrossEntropy = V2D(output.size(), V1D(output[0].size(), 0.0f));
 
-			float N = (float)((int)(*output).size() * (int)(*output)[0].size());
-			for (int i = 0; i < (*output).size(); i++) {
-				for (int j = 0; j < (*output)[0].size(); j++) {
-					deMSE[i][j] = -((*target)[i][j] - (*output)[i][j]);
-					deRMSE[i][j] = -((*target)[i][j] - (*output)[i][j]) / (N * this->lossFunc(target,output,LOSS::RMSE));
-					deBinCrossEntropy[i][j] = -((*target)[i][j] / (*output)[i][j]) + ((1.0f - (*target)[i][j]) / (1.0f - (*output)[i][j]));
-					deCategoricalCrossEntropy[i][j] = -((*target)[i][j] / ((*output)[i][j] + 1e-6f));
-					deSparseCategoricalCrossEntropy[i][j] = -1.0f / ((*output)[i][j] + 1e-6f);
+			float N = (float)((int)output.size() * (int)output[0].size());
+			for (int i = 0; i < output.size(); i++) {
+				for (int j = 0; j < output[0].size(); j++) {
+					deMSE[i][j] = -(target[i][j] - output[i][j]);
+					deRMSE[i][j] = -(target[i][j] - output[i][j]) / (N * this->lossFunc(target, output, LOSS::RMSE));
+					deBinCrossEntropy[i][j] = -(target[i][j] / output[i][j]) + ((1.0f - target[i][j]) / (1.0f - output[i][j]));
+					deCategoricalCrossEntropy[i][j] = -(target[i][j] / (output[i][j] + 1e-6f));
+					deSparseCategoricalCrossEntropy[i][j] = -1.0f / (output[i][j] + 1e-6f);
 				}
 			}
 
 			if (this->loss == LOSS::MSE)
-				*deLoss = deMSE;
+				deLoss = deMSE;
 			else if (this->loss == LOSS::RMSE)
-				*deLoss = deRMSE;
+				deLoss = deRMSE;
 			else if (this->loss == LOSS::BinaryCrossentropy)
-				*deLoss = deBinCrossEntropy;
+				deLoss = deBinCrossEntropy;
 			else if (this->loss == LOSS::CategoricalCrossentropy)
-				*deLoss = deCategoricalCrossEntropy;
+				deLoss = deCategoricalCrossEntropy;
 			else if (this->loss == LOSS::SparseCategoricalCrossentropy)
-				*deLoss = deSparseCategoricalCrossEntropy;
+				deLoss = deSparseCategoricalCrossEntropy;
 
 			return deLoss;
 
 		}
 
-	
-		V2D* derivativeAct(V2D* weights, ACTIVATION act) {
-			V2D* dw = new V2D((*weights));
+
+		V2D derivativeAct(V2D& weights, ACTIVATION act) {
+			V2D dw = V2D(weights);
 			float alpha = 0.001f;
-			
+
 			if (act == ACTIVATION::Sigmoid || act == ACTIVATION::Softmax) {
-				V1D preventOverflow = V1D((*weights).size(),0.0f);
-				for (int i = 0; i < (*weights).size(); i++) {
-					for (int j = 0; j < (*weights)[i].size(); j++) {
-						(*dw)[i][j] = (*weights)[i][j] * (1.0f - (*weights)[i][j]);
-						preventOverflow[i] += (*dw)[i][j];
+				V1D preventOverflow = V1D(weights.size(), 0.0f);
+				for (int i = 0; i < weights.size(); i++) {
+					for (int j = 0; j < weights[i].size(); j++) {
+						dw[i][j] = weights[i][j] * (1.0f - weights[i][j]);
+						preventOverflow[i] += dw[i][j];
 					}
-					for (int j = 0; j < (*weights)[i].size(); j++) {
-						(*dw)[i][j] = (*dw)[i][j] / preventOverflow[i];
+					for (int j = 0; j < weights[i].size(); j++) {
+						dw[i][j] = dw[i][j] / preventOverflow[i];
 					}
 
 				}
 			}
 			else if (act == ACTIVATION::ReLU) {
-				for (int i = 0; i < (*weights).size(); i++) {
-					for (int j = 0; j < (*weights)[i].size(); j++)
-						(*dw)[i][j] = ((*weights)[i][j] > 0.0f) ? 1.0f : 0.0f;
+				for (int i = 0; i < weights.size(); i++) {
+					for (int j = 0; j < weights[i].size(); j++)
+						dw[i][j] = (weights[i][j] > 0.0f) ? 1.0f : 0.0f;
 				}
 			}
 
 			else if (act == ACTIVATION::Maxout) {
 				float maxValue = -9999.0f;
-				for (int i = 0; i < (*weights).size(); i++) 
-					for (int j = 0; j < (*weights)[i].size(); j++) 
-						if (maxValue < (*weights)[i][j]) maxValue = (*weights)[i][j];
-				for (int i = 0; i < (*weights).size(); i++)
-					for (int j = 0; j < (*weights)[i].size(); j++)
-						(*dw)[i][j] = (*weights)[i][j] == maxValue ? 1.0f : 0.0f;		
+				for (int i = 0; i < weights.size(); i++)
+					for (int j = 0; j < weights[i].size(); j++)
+						if (maxValue < weights[i][j]) maxValue = weights[i][j];
+				for (int i = 0; i < weights.size(); i++)
+					for (int j = 0; j < weights[i].size(); j++)
+						dw[i][j] = weights[i][j] == maxValue ? 1.0f : 0.0f;
 			}
 			else if (act == ACTIVATION::ELU) {
-				for (int i = 0; i < (*weights).size(); i++) {
-					for (int j = 0; j < (*weights)[i].size(); j++) 
-						(*dw)[i][j] = ((*weights)[i][j] > 0.0f) ? 1.0f : (alpha * std::exp((*weights)[i][j]));
+				for (int i = 0; i < weights.size(); i++) {
+					for (int j = 0; j < weights[i].size(); j++)
+						dw[i][j] = (weights[i][j] > 0.0f) ? 1.0f : (alpha * std::exp(weights[i][j]));
 				}
 			}
 			else if (act == ACTIVATION::Leaky_ReLU) {
-				for (int i = 0; i < (*weights).size(); i++) {
-					for (int j = 0; j < (*weights)[i].size(); j++) 
-						(*dw)[i][j] = ((*weights)[i][j] < 0) ? alpha : 1.0f;
+				for (int i = 0; i < weights.size(); i++) {
+					for (int j = 0; j < weights[i].size(); j++)
+						dw[i][j] = (weights[i][j] < 0) ? alpha : 1.0f;
 				}
 			}
 			else {
@@ -1964,28 +2011,27 @@ namespace cnn {
 
 			return dw;
 		}
-		V4D* derivativeAct(V4D* weights, ACTIVATION act) {
-			for (int i = 0; i < (*weights).size(); i++) {
-				for (int j = 0; j < (*weights)[i].size(); j++) {
-					(*weights)[i][j] = *derivativeAct(&(*weights)[i][j], act);
+		V4D derivativeAct(V4D& weights, ACTIVATION act) {
+			for (int i = 0; i < weights.size(); i++) {
+				for (int j = 0; j < weights[i].size(); j++) {
+					weights[i][j] = derivativeAct(weights[i][j], act);
 				}
 			}
 
 			return weights;
 		}
 
-		V2D* deltaXweights(V2D* delta, V3D* weights) {
+		V2D deltaXweights(V2D* delta, V3D* weights) {
 			clipDelta(delta);
 
-
-			V2D* dXw = new V2D((*delta).size());
+			V2D dXw = V2D((*delta).size());
 			for (int i = 0; i < (*delta).size(); i++) {
-				(*dXw)[i].resize((*weights)[i].size());
+				dXw[i].resize((*weights)[i].size());
 				for (int j = 0; j < (*weights)[i].size(); j++) {
-					(*dXw)[i][j] = 0.0f;
+					dXw[i][j] = 0.0f;
 					for (int l = 0; l < (*weights)[i][j].size(); l++) {
 						for (int k = 0; k < (*delta)[i].size(); k++) {
-							(*dXw)[i][j] += (*delta)[i][k] * (*weights)[i][j][k];
+							dXw[i][j] += (*delta)[i][k] * (*weights)[i][j][k];
 						}
 					}
 				}

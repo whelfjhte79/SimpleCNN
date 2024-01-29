@@ -27,19 +27,19 @@ extern "C" {
 		V3D dummy3D;
 		V4D dummy4D;
 	public:
-		virtual V4D calculateGPU(V4D data) { return dummy4D; }
-		virtual V2D calculateGPU(V2D data) { return dummy2D; }
-		virtual V1D calculateGPU(V1D data) { return dummy1D; }
+		virtual V4D calculateGPU(V4D& data) { return dummy4D; }
+		virtual V2D calculateGPU(V2D& data) { return dummy2D; }
+		virtual V1D calculateGPU(V1D& data) { return dummy1D; }
 		virtual V2D* backwardGPU(V2D* delta) { return &dummy2D; }
 	};
 	class ActivationGPU : public LayerGPU {
 	public:
 		int test() { return 0; }
-		virtual V2D calculateGPU(V2D data) override {
+		virtual V2D calculateGPU(V2D& data) override {
 			V2D dummy;
 			return dummy;
 		}
-		virtual V4D calculateGPU(V4D data) override {
+		virtual V4D calculateGPU(V4D& data) override {
 			V4D dummy;
 			return dummy;
 		}
@@ -50,7 +50,7 @@ extern "C" {
 
 	class PaddingGPU : public LayerGPU {
 	public:
-		V2D calculateGPU(V2D data) override {
+		V2D calculateGPU(V2D& data) override {
 			V2D dummy;
 			return dummy;
 		}
@@ -80,12 +80,7 @@ extern "C" {
 		void setFilterRowColGPU(int filterRowCol) {
 			this->filterRowColGPU = filterRowCol;
 		}
-		__global__ float* parallelCalculate(float* input, float* filter,int inputSize, int filterSize) {
-			
-
-
-		}
-		virtual V4D calculateGPU(V4D data) override {
+		virtual V4D calculateGPU(V4D& data) override {
 			std::cout << "Conv 시작\n";
 			/*
 			V2D image2D = im2col(X, 3, 8, 1);
@@ -100,22 +95,23 @@ extern "C" {
 
 			V4D end = col2im(result, X.size(), X[0].size(), X[0][0].size(), X[0][0][0].size(), 3, 8, 1);
 			*/
-			V2D data2D = im2col(data, filterRowColGPU,(*filter3D).size(), strideGPU);
-			
-			V2D filter2D = filter2col((*this->filter3D),strideGPU);
-			
 
-			cout << "데이터크기: " << data2D.size() << " " << data2D[0].size() <<"\n";
-			cout << "필터크기: " << filter2D.size() << " " << filter2D[0].size() << "\n";
-
+			float** data2D = nullptr;
+			im2colGPU(data, filterRowColGPU,(*filter3D).size(), strideGPU, data2D);
+			//V2D data2D;
+			float** filter2D = nullptr;
+			filter2colGPU((*this->filter3D), strideGPU, filter2D);
 			
-			V2D cal = imageXfilter(data2D, filter2D);
-
-			cout << "cal크기:" << cal.size() << " " << cal[0].size()<<"\n";
 			
+			V2D cal = imageXfilterGPU(data2D, filter2D);
+
 			
 
 			V4D result = col2im(cal, data.size(), data[0].size(), data[0][0].size(), data[0][0][0].size(), filterRowColGPU, (*filter3D).size(), strideGPU);
+
+			//연산끝나면
+			//delete data2D
+			//delete filter2D
 
 			return result;
 		}
@@ -254,124 +250,58 @@ extern "C" {
 			data = (*this->activationGPU).calculateGPU(data);
 			return data;
 		}*/
-		/*virtual V4D calculateTest(V4D data) override {
-			V4D actMap4D = V4D(data.size());
 
-			for (int i = 0; i < data.size(); i++) {
-				actMap4D[i].resize(data[i].size() * (*filter3D).size());
-				for (int j = 0; j < data[i].size(); j++)
-					for (int k = 0; k < (*filter3D).size(); k++)
-						for (int l = 0; l < (data[i][j].size() - (*filter3D)[0][0].size()) / stride + 1; l++)
-							actMap4D[i][j * (*filter3D).size() + k].push_back(vector<float>((data[i][j][l].size() - (*filter3D)[0][0].size()) / stride + 1));
-			}
-			for (int i = 0; i < data.size(); i++) {
-				for (int m = 0; m < data[i].size(); m++) {
-					for (int j = 0; j < (*filter3D).size(); j++) {
-						for (int k = 0; k < (data[i][m].size() - (*filter3D)[0].size()) / stride + 1; k++) {
-							for (int l = 0; l < (data[i][m][k].size() - (*filter3D)[0][0].size()) / stride + 1; l++) {
-								float sum = 0.0;
-								for (int u = 0; u < (*filter3D)[0].size(); u++) {
-									for (int v = 0; v < (*filter3D)[0][0].size(); v++) {
-										sum += data[i][m][k * stride + u][l * stride + v] * (*filter3D)[j][u][v];
-									}
-								}
-								actMap4D[i][m * filter3D->size() + j][k][l] = sum;
-							}
-						}
-					}
-				}
-			}
-
-			actMap4D = (*this->activation).calculate(actMap4D);
-
-			return actMap4D;
-		}*/
 		V2D* backwardGPU(V2D* delta) override {
 			return delta;
 		}
 	private:
-		V2D im2col(const V4D& image, int kernelRowCol, int kernelSize, int stride) {
-
-			cout << "TTTTTTTTTT크기4D: " << image.size() << "\n";
-			cout << "TTTTTTTTTT크기3D: " << image[0].size() << "\n";
-			cout << "TTTTTTTTTT크기2D: " << image[0][0].size() << "\n";
-			cout << "TTTTTTTTTT크기1D: " << image[0][0][0].size() << "\n";
-
-			int imageSize = image.size();
-			int channel = image[0].size();
+		
+		//float**
+		void im2colGPU(const V4D& image, int kernelRowCol, const int kernelSize, int stride, float** col) {
+			const int imageSize = image.size();
+			const int channel = image[0].size();
 			int height = image[0][0].size();
 			int width = image[0][0][0].size();
-
-
-
-
 			int output_height = (height - kernelRowCol) / stride + 1;
 			int output_width = (width - kernelRowCol) / stride + 1;
+			const int _kernelSize = kernelSize;
 
-			V2D col;
+			int col_entry_size = output_height * output_width * kernelRowCol * kernelRowCol;
+			col = new float* [kernelSize * imageSize * channel];
+			int cnt = 0;
+
 			for (int i = 0; i < kernelSize; i++) {
 				for (int f = 0; f < imageSize; f++) {
 					for (int d = 0; d < channel; ++d) {
-						V1D col_entry;
+						col[cnt] = new float[col_entry_size];
+						int col_entry = 0;
 						for (int h = 0; h < output_height; ++h) {
 							for (int w = 0; w < output_width; ++w) {
 								for (int i = h * stride; i < h * stride + kernelRowCol; ++i) {
 									for (int j = w * stride; j < w * stride + kernelRowCol; ++j) {
-										col_entry.push_back(image[f][d][i][j]);
+										col[cnt][col_entry++] += image[f][d][i][j];
 									}
 								}
 							}
 
 						}
-						col.push_back(col_entry);
+						cnt++;
 					}
-
 				}
 			}
-			return col;
 		}
-		/*V2D im2col(const V4D& image, int kernelSize, int stride) {
-			int imageSize = image.size();
-			int channel = image[0].size();
-			int height = image[0][0].size();
-			int width = image[0][0][0].size();
-			int output_height = (height - kernelSize) / stride + 1;
-			int output_width = (width - kernelSize) / stride + 1;
-
-			V2D col;
-			for (int f = 0; f < imageSize; f++) {
-				for (int h = 0; h < output_height; ++h) {
-					for (int d = 0; d < channel; ++d) {
-						V1D col_entry;
-						for (int w = 0; w < output_width; ++w) {
-							for (int i = h * stride; i < h * stride + kernelSize; ++i) {
-								for (int j = w * stride; j < w * stride + kernelSize; ++j) {
-									col_entry.push_back(image[f][d][i][j]);
-								}
-							}
-						}
-						col.push_back(col_entry);
-					}
-				}
-
-			}
-			return col;
-		}*/
-		V2D filter2col(const V3D& filter, int stride) {
-			V2D col;
-
+		void filter2colGPU(const V3D& filter, int stride, float** filter2D) {
+			filter2D = new float* [filter.size()];
 			for (int i = 0; i < filter.size(); i++) {
-				V1D col1D;
+				filter2D[i] = new float[(int)(filter[0].size() * filter[0][0].size())];
+				int cnt = 0;
 				for (int j = 0; j < filter[i].size(); j++) {
 					for (int k = 0; k < filter[i][j].size(); k++) {
-						col1D.push_back(filter[i][j][k]);
+						filter2D[i][cnt++] = filter[i][j][k];
 					}
 				}
-				col.push_back(col1D);
 			}
-			return col;
 		}
-		
 		V4D col2im(const V2D& col, int imageSize, int channel, int height, int width, int kernelRowCol, int kernelSize, int stride) {
 			int outputH = (height - kernelRowCol) / stride + 1;
 			int outputW = (width - kernelRowCol) / stride + 1;
@@ -392,128 +322,6 @@ extern "C" {
 
 			return image;
 		}
-		/*
-		V4D col2im(const V2D& col, int imageSize, int channel, int height, int width, int kernelRowCol, int kernelSize, int stride) {
-			int output_height = (height - kernelRowCol) / stride + 1;
-			int output_width = (width - kernelRowCol) / stride + 1;
-
-			cout << "col2i imageSize: " << imageSize << "\n";
-			cout << "col2i chanXkernelSize: " << channel * kernelSize<<"\n";
-			cout << "col2i output_height: " << output_height<<"\n";
-			cout << "col2i outputwidth: " << output_width <<"\n";
-
-			V4D image(imageSize, V3D(channel * kernelSize, V2D(output_height, V1D(output_width))));
-
-			int col_index = 0;
-
-			cout << "\n\n로그기록:\n\n";
-			cout << "kernelSize: " << kernelSize << "\n";
-			cout << "imageSize: " << imageSize << "\n";
-			cout << "output_height: " << output_height << "\n";
-			cout << "channel: " << channel << "\n";
-			cout << "output_width: " << output_width << "\n";
-			cout << " h * stride: " << output_height * stride << "\n";
-			cout << " h * stride + kernelRowCol: " << output_height * stride + kernelRowCol << "\n";
-			// 8 x 3 x 100 x 98 = 235,200 
-			for (int i = 0; i < kernelSize; i++) {
-				for (int f = 0; f < imageSize; f++) {
-					for (int h = 0; h < output_height; ++h) {
-						for (int d = 0; d < channel; ++d) {
-							for (int w = 0; w < output_width; ++w) {
-								for (int x = h * stride; x < h * stride + kernelRowCol; ++x) {
-									for (int y = w * stride; y < w * stride + kernelRowCol; ++y) {
-										image[f][d + i][x][y] = col[col_index][i];
-									}
-								}
-							}
-							col_index++;
-						}
-					}
-				}
-			}
-			*/
-			/*
-			for (int i = 0; i < kernelSize; i++) {
-				for (int f = 0; f < imageSize; f++) {
-					for (int h = 0; h < output_height; ++h) {
-						for (int d = 0; d < channel; ++d) {
-							for (int w = 0; w < output_width; ++w) {
-								for (int x = h * stride; x < h * stride + kernelRowCol; ++x) {
-									for (int y = w * stride; y < w * stride + kernelRowCol; ++y) {
-										image[f][d + i][x][y] = col[col_index][w];
-									}
-								}
-							}
-							col_index++;
-						}
-					}
-				}
-			}
-			*/
-		/*
-			return image;
-		}
-		*/
-
-
-
-
-		/*
-		V4D col2im(const V2D& col, int imageSize, int channel, int height, int width, int kernelRowCol, int kernelSize, int stride) {
-			int output_height = (height - kernelRowCol) / stride + 1;
-			int output_width = (width - kernelRowCol) / stride + 1;
-
-			V4D image = V4D(imageSize * kernelSize, V3D(channel));
-			int cnt1D = 0;
-			for (int f = 0; f < imageSize * kernelSize; f++) {
-				for (int h = 0; h < output_height; ++h) {
-					for (int d = 0; d < channel; ++d) {
-						int cnt = 0;
-						for (int w = 0; w < output_width; ++w) {
-							image[f][d].resize(h * stride + kernelRowCol);
-							for (int i = h * stride; i < h * stride + kernelRowCol; ++i) {
-								image[f][d][i].resize(w * stride + kernelRowCol);
-								for (int j = w * stride; j < w * stride + kernelRowCol; ++j) {
-									image[f][d][i][j] += col[cnt1D][cnt];
-									cnt++;
-								}
-							}
-
-						}
-						cnt1D++;
-					}
-				}
-
-			}
-
-			return image;
-		}
-		/*
-		V2D filter2col(const V4D* image, const V3D& filter, int stride) {
-			V2D col;
-			int imageXSize = ((*image)[0][0][0].size() - filter[0].size()) / stride + 1;
-			int imageYSize = ((*image)[0][0].size() - filter[0].size()) / stride + 1;
-			int imageChannel = (*image)[0].size();
-			int imageSize = (*image).size();
-			for (int i = 0; i < filter.size(); i++) {
-				for (int j = 0; j < imageSize; j++) {
-					for (int k = 0; k < imageChannel; k++) {
-						for (int l = 0; l < imageYSize; l++) {
-							V1D col1D;
-							for (int o = 0; o < imageXSize; o++) {
-								for (int m = 0; m < filter[i].size(); m++) {
-									for (int n = 0; n < filter[0].size(); n++) {
-										col1D.push_back(filter[i][m][n]);
-									}
-								}
-							}
-							col.push_back(col1D);
-						}
-					}
-				}
-			}
-			return col;
-		}*/
 		V2D transpose(const vector<V1D>& data) {
 			V2D trans = V2D(data[0].size(), V1D(data.size(), 0.0f));
 			for (int i = 0; i < data.size(); i++) {
@@ -523,21 +331,133 @@ extern "C" {
 			}
 			return trans;
 		}
-		V2D imageXfilter(V2D image, V2D filter) {
-			/*
-			* int image4D_XSize;
-			이미지: 48 86436
-		필터: 8 9 이면
-			result가 x축이 9604가 나와야하는데
-			x축이 9임.
 
+		/*
+		__global__ void multiplyKernel(float* a, float* b, float* c, int M, int K, int N) {
+			int tid = blockIdx.x * blockDim.x + threadIdx.x;
 
-			*/
-			V2D result = V2D(image.size(), V1D(image[0].size() / filter[0].size(), 0.0f));
-			for (int i = 0; i < image.size(); i++) {
-				for (int j = 0; j < image[i].size(); j++) {
-					result[i][(j / filter[0].size()) % filter[0].size()] += image[i][j] * filter[i % filter.size()][j % filter[i % filter.size()].size()];
+			if (tid < M * N) {
+				int row = tid / N;
+				int col = tid % N;
+
+				float sum = 0.0f;
+				for (int i = 0; i < K; ++i) {
+					sum += a[row * K + i] * b[i * N + col];
 				}
+
+				c[row * N + col] = sum;
+			}
+		}
+
+		std::vector<std::vector<float>> imageXfilterGPU(float** image, float** filter) {
+			int imageRowSize = sizeof(image) / sizeof(image[0]);
+			int imageColSize = sizeof(image[0]) / sizeof(image[0][0]);
+			int filterRowSize = sizeof(filter) / sizeof(filter[0]);
+			int filterColSize = sizeof(filter[0]) / sizeof(filter[0][0]);
+
+			std::vector<std::vector<float>> result(imageRowSize, std::vector<float>(filterColSize, 0.0f));
+
+			float* hostImage = *image;
+			float* hostFilter = *filter;
+			float* hostResult = new float[imageRowSize * filterColSize];
+
+			float* deviceImage = nullptr;
+			float* deviceFilter = nullptr;
+			float* deviceResult = nullptr;
+
+			int imageSize = imageRowSize * imageColSize * sizeof(float);
+			int filterSize = filterRowSize * filterColSize * sizeof(float);
+			int resultSize = imageRowSize * filterColSize * sizeof(float);
+
+			cudaMalloc((void**)&deviceImage, imageSize);
+			cudaMalloc((void**)&deviceFilter, filterSize);
+			cudaMalloc((void**)&deviceResult, resultSize);
+
+			cudaMemcpy(deviceImage, hostImage, imageSize, cudaMemcpyHostToDevice);
+			cudaMemcpy(deviceFilter, hostFilter, filterSize, cudaMemcpyHostToDevice);
+
+			dim3 blockSize(256);
+			dim3 gridSize((imageRowSize * filterColSize + blockSize.x - 1) / blockSize.x);
+
+			multiplyKernel<<<gridSize,blockSize>>>(deviceImage, deviceFilter, deviceResult, imageRowSize, imageColSize, filterColSize);
+			cudaMemcpy(hostResult, deviceResult, resultSize, cudaMemcpyDeviceToHost);
+
+			for (int i = 0; i < imageRowSize; i++) {
+				for (int j = 0; j < filterColSize; j++) {
+					result[i][j] = hostResult[i * filterColSize + j];
+				}
+			}
+
+			// 메모리 해제
+			delete[] hostResult;
+			cudaFree(deviceImage);
+			cudaFree(deviceFilter);
+			cudaFree(deviceResult);
+
+			return result;
+		}*/
+
+		
+		__global__ void multiplyKernel(float* a, float* b, float* c, int M, int K, int N) {
+			int tid = blockIdx.x * blockDim.x + threadIdx.x;
+
+			if (tid < M * N) {
+				int row = tid / N;
+				int col = tid % N;
+
+				float sum = 0.0f;
+				for (int i = 0; i < K; ++i) {
+					sum += a[row * K + i] * b[i * N + col];
+				}
+
+				c[row * N + col] = sum;
+			}
+		}
+		V2D imageXfilterGPU(float** image, float** filter) {
+			int imageRowSize = sizeof(image) / sizeof(image[0]);
+			int imageColSize = sizeof(image[0]) / sizeof(image[0][0]);
+			int filterRowSize = sizeof(filter) / sizeof(filter[0]);
+			int filterColSize = sizeof(filter[0]) / sizeof(filter[0][0]);
+
+
+			V2D result = V2D(imageRowSize, V1D(filterColSize, 0.0f));
+
+			//float* cudaImage = new float[imageRowSize * imageColSize];
+			//float* cudaFilter = new float[filterRowSize * filterColSize];
+			float* hostImage = *image;
+			float* hostFilter = *filter;
+			float* hostResult = new float[imageRowSize * filterColSize];
+
+			float* deviceImage = nullptr;
+			float* deviceFilter = nullptr;
+			float* deviceResult = nullptr;
+
+			int imageSize = imageRowSize * imageColSize * sizeof(float);
+			int filterSize = filterRowSize * filterColSize * sizeof(float);
+			int resultSize = imageRowSize * filterColSize * sizeof(float);
+
+			cudaMalloc((void**)&deviceImage, imageSize);
+			cudaMalloc((void**)&deviceFilter, filterSize);
+			cudaMalloc((void**)&deviceResult, resultSize);
+
+			cudaMemcpy(deviceImage, hostImage, imageSize, cudaMemcpyHostToDevice);
+			cudaMemcpy(deviceFilter, hostImage, filterSize, cudaMemcpyHostToDevice);
+
+			//dim3 blockSize(16, 16);
+			//dim3 gridSize((filterColSize + blockSize.x - 1) / blockSize.x, (imageRowSize + blockSize.y - 1) / blockSize.y);
+			dim3 blockSize(256);
+			dim3 gridSize((imageRowSize * filterColSize + blockSize.x - 1) / blockSize.x);
+
+			//multiplyKernel <<<gridSize, blockSize>>> (deviceImage, deviceFilter, deviceResult, imageRowSize, imageColSize, filterColSize);
+			cudaMemcpy(hostResult, deviceResult, resultSize, cudaMemcpyDeviceToHost);
+
+			
+			for (int i = 0; i < imageRowSize; i++) {
+				V1D result1D;
+				for (int j = 0; j < filterColSize; j++) {
+					result1D.push_back(hostResult[i * filterColSize + j]);
+				}
+				result.push_back(result1D);
 			}
 			return result;
 		}
@@ -545,7 +465,7 @@ extern "C" {
 	};
 	class PoolingGPU : public LayerGPU {
 	public:
-		V2D calculateGPU(V2D data) override {
+		V2D calculateGPU(V2D& data) override {
 			V2D dummy;
 			return dummy;
 		}
@@ -561,7 +481,7 @@ extern "C" {
 		V2D flatten(V4D data) {
 
 		}
-		V2D calculateGPU(V2D data) override {
+		V2D calculateGPU(V2D& data) override {
 			V2D dummy;
 			return dummy;
 		}
@@ -571,7 +491,7 @@ extern "C" {
 	};
 	class FullyConnectedGPU : public LayerGPU {
 	public:
-		V2D calculateGPU(V2D data) override {
+		V2D calculateGPU(V2D& data) override {
 			V2D dummy;
 			return dummy;
 		}

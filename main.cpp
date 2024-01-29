@@ -1,20 +1,21 @@
-#include<opencv2/opencv.hpp>
-#include<opencv2/core.hpp>
+//#include<opencv2/opencv.hpp>
+//#include<opencv2/core.hpp>
 #include<iostream>
-#include"WinVisualization.h" // 시각화 차트
-//#define _CUDA_GPU_ // GPU 사용
-#include"SimpleCNN.h"
+//#include"WinVisualization.h" // 시각화 차트
+#define _CUDA_GPU_ // GPU 사용
+//#include"SimpleCNN.h"
 
 
 
 #ifdef _CUDA_GPU_
-#include"kernel.cuh"
+//#include"kernel.cuh"
+#include"kernelTest.cuh"
 #endif //__CUDACC__
 
-using namespace cv;
-using namespace std;
-using namespace img_read;
-using namespace cnn;
+//using namespace cv;
+//using namespace std;
+//using namespace img_read;
+//using namespace cnn;
 
 
 
@@ -57,8 +58,20 @@ int main(void) {
 }
 #endif
 */
+#ifdef _CUDA_GPU_ // test
+int main() {
+	int a = 5;
+	int b = 7;
+	int result;
 
-#ifdef _CUDA_GPU_
+	//sum_cuda(a, b, &result);
+
+	printf("결과: %d", result);
+
+	return 0;
+}
+#endif
+#ifndef _CUDA_GPU_
 int main(void) {
 	std::cout << "테스트";
 	V4D dataset = V4D(1000, V3D(3, V2D(100, V1D(100, 0.0f))));
@@ -110,43 +123,43 @@ int main(void) {
 }
 
 
-#else
+//#else
 int main(void) {
 	//Directory* dirent = new Directory("C:\\Users\\이상민\\source\\repos\\SimpleCNN_image\\SimpleCNN_image\\이미지테스트\\Humans", img_read::FILENAME_EXTENSION::JPG);
 
-	V4D dataset = V4D(50, V3D(3, V2D(100, V1D(100, 0.0f))));
+	V4D dataset = V4D(500, V3D(3, V2D(28, V1D(28, 0.0f))));
 	
 	RandomGen* randFloat = new RandomGen(0.0f, 1.0f);
 	RandomGen* randInt = new RandomGen(0,9);
-	V1D label = V1D(50, 0.0f);
+	V1D label = V1D(500, 0.0f);
 	for (int i = 0; i < dataset.size(); ++i) {
 		randFloat->randGen(dataset[i], false);
 		//randInt->randGenInt(label[i]);
 	}
 	CNN* cnn = new CNN(dataset, label);
-	//cnn->splitTrainTest(0.3);
-	cnn->add(new Conv(3, 3, 1, 1, ACTIVATION::TanH));
+	cnn->add(new Conv(3, 3, 1, 1, ACTIVATION::ReLU));
 	cnn->add(new Pooling(POOLING::Max));
 	cnn->add(new Padding(1));
 	cnn->add(new Conv(3, 3, 1, 1, ACTIVATION::ReLU));
 	cnn->add(new Pooling(POOLING::Max));
+	cnn->add(new Conv(3, 3, 1, 1, ACTIVATION::ReLU));
 	cnn->add(new Padding(2));
-	cnn->add(new Pooling(POOLING::Max));
-	cnn->add(new Pooling(POOLING::Min));
-	cnn->add(new Pooling(POOLING::Min));
+	///cnn->add(new Pooling(POOLING::Max));
+	///cnn->add(new Pooling(POOLING::Min));
+	///cnn->add(new Pooling(POOLING::Min));
 	cnn->add(new Flatten());
-	cnn->add(new FullyConnected(64, ACTIVATION::Maxout));
+	cnn->add(new FullyConnected(64, ACTIVATION::ReLU));
 	cnn->add(new FullyConnected(32, ACTIVATION::Sigmoid));
 	cnn->add(new FullyConnected(16, ACTIVATION::ReLU));
 
 	cnn->add(new FullyConnected(10, ACTIVATION::Softmax));
 
 	cnn->compile(OPTIMIZER::Momentum, LOSS::CategoricalCrossentropy);
-	cnn->fit(1, 5);
+	cnn->fit(1, 100);
 
 	
-	cnn->save("cnn_test.txt");
-	cnn->load("cnn_test.txt");
+	//cnn->save("cnn_test.txt");
+	//cnn->load("cnn_test.txt");
 	//V1D predictions = cnn->predict(dirent->getImageSet());
 	
 	//cnn->accuracy(predictions, label->getLabel());
