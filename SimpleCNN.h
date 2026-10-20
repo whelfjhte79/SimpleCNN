@@ -99,7 +99,7 @@
 #define SCNN_STDCALL
 #endif
 
-// JPG / PNG 는 stb_image.h 를 이 파일 옆에 두면 자동으로 읽는다. (없으면 BMP / PGM / PPM 만)
+// PNG / BMP / PGM / PPM / RAW 는 직접 읽는다. JPG / GIF / TGA 는 stb_image.h 를 이 파일 옆에 두면 자동으로 읽는다.
 #if defined(__has_include) && !defined(SIMPLECNN_NO_STB)
 #if __has_include("stb_image.h")
 #define SIMPLECNN_STB
@@ -1999,6 +1999,246 @@ namespace cnn {
 		return std::vector<uint8_t>((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
 	}
 
+	// 소문자 확장자 (".png")
+	inline std::string lowerExtension(const std::filesystem::path& path) {
+		std::string ext = path.extension().string();
+		std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char ch) { return (char)std::tolower(ch); });
+		return ext;
+	}
+
+	// deflate 압축 풀기 (RFC 1951). PNG 와 gzip 이 쓴다. 잘못된 데이터면 runtime_error
+	class Inflater {
+	private:
+		struct Huffman {
+			std::vector<short> count;
+			std::vector<short> symbol;
+		};
+		const uint8_t* in;
+		size_t inSize;
+		size_t pos;
+		uint32_t bitBuffer = 0;
+		int bitCount = 0;
+		std::vector<uint8_t>& out;
+
+		int bits(int need) {
+			uint32_t value = this->bitBuffer;
+			while (this->bitCount < need) {
+				if (this->pos >= this->inSize)
+					throw std::runtime_error("압축 데이터가 중간에 끊겼습니다.");
+				value |= (uint32_t)this->in[this->pos++] << this->bitCount;
+				this->bitCount += 8;
+			}
+			this->bitBuffer = value >> need;
+			this->bitCount -= need;
+			return (int)(value & ((1u << need) - 1));
+		}
+		static void build(Huffman& h, const short* lengths, int n) {
+			h.count.assign(16, 0);
+			h.symbol.assign(n, 0);
+			for (int s = 0; s < n; ++s)
+				h.count[lengths[s]]++;
+			h.count[0] = 0;
+			short offsets[16] = { 0 };
+			for (int len = 1; len < 15; ++len)
+				offsets[len + 1] = offsets[len] + h.count[len];
+			for (int s = 0; s < n; ++s) {
+				if (lengths[s] != 0)
+					h.symbol[offsets[lengths[s]]++] = (short)s;
+			}
+		}
+		int decode(const Huffman& h) {
+			int code = 0;
+			int first = 0;
+			int index = 0;
+			for (int len = 1; len <= 15; ++len) {
+				code |= this->bits(1);
+				int count = h.count[len];
+				if (code - count < first)
+					return h.symbol[index + (code - first)];
+				index += count;
+				first += count;
+				first <<= 1;
+				code <<= 1;
+			}
+			throw std::runtime_error("잘못된 허프만 코드");
+		}
+		void stored() {
+			this->bitBuffer = 0;
+			this->bitCount = 0;
+			if (this->pos + 4 > this->inSize)
+				throw std::runtime_error("압축 데이터가 중간에 끊겼습니다.");
+			int length = this->in[this->pos] | (this->in[this->pos + 1] << 8);
+			this->pos += 4;
+			if (this->pos + length > this->inSize)
+				throw std::runtime_error("압축 데이터가 중간에 끊겼습니다.");
+			this->out.insert(this->out.end(), this->in + this->pos, this->in + this->pos + length);
+			this->pos += length;
+		}
+		void codes(const Huffman& lengthCode, const Huffman& distCode) {
+			static const short lengthBase[29] = { 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258 };
+			static const short lengthExtra[29] = { 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0 };
+			static const short distBase[30] = { 1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577 };
+			static const short distExtra[30] = { 0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13 };
+			while (true) {
+				int symbol = this->decode(lengthCode);
+				if (symbol < 256) {
+					this->out.push_back((uint8_t)symbol);
+					continue;
+				}
+				if (symbol == 256)
+					return;
+				symbol -= 257;
+				if (symbol >= 29)
+					throw std::runtime_error("잘못된 길이 코드");
+				int length = lengthBase[symbol] + this->bits(lengthExtra[symbol]);
+				int distSymbol = this->decode(distCode);
+				if (distSymbol >= 30)
+					throw std::runtime_error("잘못된 거리 코드");
+				size_t dist = (size_t)distBase[distSymbol] + this->bits(distExtra[distSymbol]);
+				if (dist > this->out.size())
+					throw std::runtime_error("잘못된 거리");
+				size_t from = this->out.size() - dist;
+				for (int i = 0; i < length; ++i)
+					this->out.push_back(this->out[from + i]);
+			}
+		}
+		void fixed() {
+			short lengths[320];
+			int s = 0;
+			for (; s < 144; ++s)
+				lengths[s] = 8;
+			for (; s < 256; ++s)
+				lengths[s] = 9;
+			for (; s < 280; ++s)
+				lengths[s] = 7;
+			for (; s < 288; ++s)
+				lengths[s] = 8;
+			Huffman lengthCode;
+			build(lengthCode, lengths, 288);
+			for (s = 0; s < 30; ++s)
+				lengths[s] = 5;
+			Huffman distCode;
+			build(distCode, lengths, 30);
+			this->codes(lengthCode, distCode);
+		}
+		void dynamic() {
+			static const short order[19] = { 16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15 };
+			int nlen = this->bits(5) + 257;
+			int ndist = this->bits(5) + 1;
+			int ncode = this->bits(4) + 4;
+			short lengths[320] = { 0 };
+			for (int i = 0; i < ncode; ++i)
+				lengths[order[i]] = (short)this->bits(3);
+			Huffman lencode;
+			build(lencode, lengths, 19);
+			int index = 0;
+			while (index < nlen + ndist) {
+				int symbol = this->decode(lencode);
+				if (symbol < 16) {
+					lengths[index++] = (short)symbol;
+					continue;
+				}
+				short value = 0;
+				int repeat = 0;
+				if (symbol == 16) {
+					if (index == 0)
+						throw std::runtime_error("잘못된 반복 코드");
+					value = lengths[index - 1];
+					repeat = 3 + this->bits(2);
+				}
+				else if (symbol == 17) {
+					repeat = 3 + this->bits(3);
+				}
+				else {
+					repeat = 11 + this->bits(7);
+				}
+				if (index + repeat > nlen + ndist)
+					throw std::runtime_error("잘못된 길이 표");
+				while (repeat-- > 0)
+					lengths[index++] = value;
+			}
+			Huffman lengthCode;
+			build(lengthCode, lengths, nlen);
+			Huffman distCode;
+			build(distCode, lengths + nlen, ndist);
+			this->codes(lengthCode, distCode);
+		}
+	public:
+		Inflater(const uint8_t* data, size_t size, size_t start, std::vector<uint8_t>& output) : in(data), inSize(size), pos(start), out(output) {}
+
+		void run() {
+			int last = 0;
+			while (last == 0) {
+				last = this->bits(1);
+				int type = this->bits(2);
+				if (type == 0)
+					this->stored();
+				else if (type == 1)
+					this->fixed();
+				else if (type == 2)
+					this->dynamic();
+				else
+					throw std::runtime_error("잘못된 블록 형식");
+			}
+		}
+	};
+
+	// data[start] 부터 deflate 를 풀어 돌려준다.
+	inline std::vector<uint8_t> inflate(const uint8_t* data, size_t size, size_t start = 0) {
+		std::vector<uint8_t> output;
+		output.reserve(size * 4);
+		Inflater inflater(data, size, start, output);
+		inflater.run();
+		return output;
+	}
+
+	inline uint32_t crc32(const uint8_t* data, size_t size, uint32_t crc = 0) {
+		static const std::vector<uint32_t> table = []() {
+			std::vector<uint32_t> t(256);
+			for (uint32_t n = 0; n < 256; ++n) {
+				uint32_t c = n;
+				for (int k = 0; k < 8; ++k) {
+					if (c & 1)
+						c = 0xEDB88320u ^ (c >> 1);
+					else
+						c >>= 1;
+				}
+				t[n] = c;
+			}
+			return t;
+		}();
+		crc = ~crc;
+		for (size_t i = 0; i < size; ++i)
+			crc = table[(crc ^ data[i]) & 0xFF] ^ (crc >> 8);
+		return ~crc;
+	}
+
+	// zlib 형식으로 감싼다. 압축하지 않고 저장 블록만 쓴다. (PNG 저장용)
+	inline std::vector<uint8_t> zlibStore(const std::vector<uint8_t>& data) {
+		std::vector<uint8_t> out = { 0x78, 0x01 };
+		size_t pos = 0;
+		do {
+			size_t length = (std::min)(data.size() - pos, (size_t)65535);
+			uint8_t last = 0;
+			if (pos + length == data.size())
+				last = 1;
+			uint8_t header[5] = { last, (uint8_t)length, (uint8_t)(length >> 8), (uint8_t)~length, (uint8_t)(~length >> 8) };
+			out.insert(out.end(), header, header + 5);
+			out.insert(out.end(), data.begin() + pos, data.begin() + pos + length);
+			pos += length;
+		} while (pos < data.size());
+		uint32_t a = 1;
+		uint32_t b = 0;
+		for (uint8_t v : data) {
+			a = (a + v) % 65521;
+			b = (b + a) % 65521;
+		}
+		uint32_t adler = (b << 16) | a;
+		for (int i = 3; i >= 0; --i)
+			out.push_back((uint8_t)(adler >> (8 * i)));
+		return out;
+	}
+
 	// 이미지 한 장. 픽셀은 HWC (가로줄 순서, RGB) 0~255
 	struct Image {
 		int width = 0;
@@ -2013,13 +2253,17 @@ namespace cnn {
 		uint8_t& at(int x, int y, int c) { return this->pixels[((size_t)y * this->width + x) * this->channels + c]; }
 		uint8_t at(int x, int y, int c) const { return this->pixels[((size_t)y * this->width + x) * this->channels + c]; }
 
-		// BMP, PGM, PPM 은 직접 읽고, stb_image.h 가 있으면 JPG / PNG 등도 읽는다. 실패하면 빈 이미지
+		// PNG, BMP, PGM, PPM, RAW 는 직접 읽고, stb_image.h 가 있으면 JPG 등도 읽는다. 실패하면 빈 이미지
 		static Image load(const std::filesystem::path& path) {
 			std::vector<uint8_t> bytes = readFile(path);
 			if (bytes.size() > 2 && bytes[0] == 'B' && bytes[1] == 'M')
 				return decodeBMP(bytes);
+			if (bytes.size() > 8 && std::memcmp(bytes.data(), "\x89PNG\r\n\x1a\n", 8) == 0)
+				return decodePNG(bytes);
 			if (bytes.size() > 2 && bytes[0] == 'P' && (bytes[1] == '5' || bytes[1] == '6'))
 				return decodePNM(bytes);
+			if (lowerExtension(path) == ".raw")
+				return decodeRaw(bytes, pathString(path.stem()));
 			Image image;
 #ifdef SIMPLECNN_STB
 			int w = 0;
@@ -2036,7 +2280,52 @@ namespace cnn {
 #endif
 			return image;
 		}
+		// RAW: 헤더 없는 8비트 픽셀 (HWC, RGB 순서). 크기를 직접 준다.
+		static Image loadRaw(const std::filesystem::path& path, int width, int height, int channels) {
+			std::vector<uint8_t> bytes = readFile(path);
+			if (width <= 0 || height <= 0 || channels <= 0 || bytes.size() < (size_t)width * height * channels)
+				return Image();
+			Image image(width, height, channels);
+			std::memcpy(image.pixels.data(), bytes.data(), image.pixels.size());
+			return image;
+		}
 
+		// PNG 로 저장 (8비트 흑백 / RGB / RGBA, 압축 없음)
+		bool savePNG(const std::string& path) const {
+			Image image = *this;
+			if (image.channels == 2)
+				image = this->withChannels(4);
+			int colorType = 0;
+			if (image.channels == 3)
+				colorType = 2;
+			else if (image.channels == 4)
+				colorType = 6;
+			size_t rowBytes = (size_t)image.width * image.channels;
+			std::vector<uint8_t> filtered;
+			filtered.reserve((rowBytes + 1) * image.height);
+			for (int y = 0; y < image.height; ++y) {
+				filtered.push_back(0);
+				filtered.insert(filtered.end(), image.pixels.begin() + y * rowBytes, image.pixels.begin() + (y + 1) * rowBytes);
+			}
+			uint8_t header[13] = { 0 };
+			writeBE(header, (uint32_t)image.width);
+			writeBE(header + 4, (uint32_t)image.height);
+			header[8] = 8;
+			header[9] = (uint8_t)colorType;
+			std::ofstream file(toPath(path), std::ios::binary);
+			file.write("\x89PNG\r\n\x1a\n", 8);
+			writeChunk(file, "IHDR", header, 13);
+			std::vector<uint8_t> data = zlibStore(filtered);
+			writeChunk(file, "IDAT", data.data(), data.size());
+			writeChunk(file, "IEND", nullptr, 0);
+			return (bool)file;
+		}
+		// RAW 로 저장. 파일 이름에 "_가로x세로x채널" 을 붙여 두면 load() 가 크기를 알아낸다.
+		bool saveRaw(const std::string& path) const {
+			std::ofstream file(toPath(path), std::ios::binary);
+			file.write(reinterpret_cast<const char*>(this->pixels.data()), (std::streamsize)this->pixels.size());
+			return (bool)file;
+		}
 		// 24비트 BMP 로 저장
 		bool saveBMP(const std::string& path) const {
 			Image rgb = this->withChannels(3);
@@ -2134,36 +2423,433 @@ namespace cnn {
 		static uint32_t readLE(const uint8_t* p) {
 			return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 		}
-		// BMP: 비압축 8비트(팔레트) / 24비트 / 32비트
+		static uint32_t readLE16(const uint8_t* p) {
+			return (uint32_t)p[0] | ((uint32_t)p[1] << 8);
+		}
+		static void writeBE(uint8_t* p, uint32_t v) {
+			for (int i = 0; i < 4; ++i)
+				p[i] = (uint8_t)(v >> (24 - 8 * i));
+		}
+		static uint32_t readBE(const uint8_t* p) {
+			return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | (uint32_t)p[3];
+		}
+		// 너무 큰 크기는 손상된 파일로 본다. (2억 6천만 픽셀까지)
+		static bool validSize(int w, int h) {
+			return w > 0 && h > 0 && (size_t)w * h <= ((size_t)1 << 28);
+		}
+		static void writeChunk(std::ofstream& file, const char* type, const uint8_t* data, size_t size) {
+			uint8_t length[4];
+			writeBE(length, (uint32_t)size);
+			file.write(reinterpret_cast<const char*>(length), 4);
+			std::vector<uint8_t> body(type, type + 4);
+			if (size > 0)
+				body.insert(body.end(), data, data + size);
+			file.write(reinterpret_cast<const char*>(body.data()), (std::streamsize)body.size());
+			uint8_t crc[4];
+			writeBE(crc, crc32(body.data(), body.size()));
+			file.write(reinterpret_cast<const char*>(crc), 4);
+		}
+		// 비트필드 마스크로 채널 하나를 꺼내 0~255 로 맞춘다.
+		static uint8_t maskValue(uint32_t v, uint32_t mask) {
+			if (mask == 0)
+				return 0;
+			int shift = 0;
+			while (((mask >> shift) & 1) == 0)
+				++shift;
+			uint64_t maxValue = mask >> shift;
+			return (uint8_t)(((uint64_t)(v & mask) >> shift) * 255 / maxValue);
+		}
+		// RLE8 / RLE4 를 풀어 팔레트 번호로 채운다. RLE 는 항상 아래 줄부터 위로 저장된다.
+		static void decodeRLE(const std::vector<uint8_t>& bytes, size_t pos, int bits, int w, int h, std::vector<uint8_t>& index) {
+			int x = 0;
+			int y = 0;
+			auto put = [&](int value) {
+				if (x < w && y < h)
+					index[(size_t)(h - 1 - y) * w + x] = (uint8_t)value;
+				++x;
+			};
+			while (pos + 1 < bytes.size() && y < h) {
+				int count = bytes[pos];
+				int value = bytes[pos + 1];
+				pos += 2;
+				if (count > 0) {
+					for (int i = 0; i < count; ++i) {
+						int v = value;
+						if (bits == 4 && i % 2 == 0)
+							v = value >> 4;
+						else if (bits == 4)
+							v = value & 15;
+						put(v);
+					}
+				}
+				else if (value == 0) {
+					x = 0;
+					++y;
+				}
+				else if (value == 1) {
+					return;
+				}
+				else if (value == 2) {
+					if (pos + 1 >= bytes.size())
+						return;
+					x += bytes[pos];
+					y += bytes[pos + 1];
+					pos += 2;
+				}
+				else {
+					// 그대로 저장된 value 개. 2바이트 경계에 맞춰 채워져 있다.
+					size_t used = (size_t)value;
+					if (bits == 4)
+						used = ((size_t)value + 1) / 2;
+					if (pos + used > bytes.size())
+						return;
+					for (int i = 0; i < value; ++i) {
+						int v = 0;
+						if (bits == 8)
+							v = bytes[pos + i];
+						else if (i % 2 == 0)
+							v = bytes[pos + i / 2] >> 4;
+						else
+							v = bytes[pos + i / 2] & 15;
+						put(v);
+					}
+					pos += used + used % 2;
+				}
+			}
+		}
+		// BMP: 1 / 4 / 8 비트 팔레트 (RLE 압축 포함), 16 / 24 / 32 비트 (비트필드 포함), OS/2 헤더
 		static Image decodeBMP(const std::vector<uint8_t>& bytes) {
-			if (bytes.size() < 54)
+			if (bytes.size() < 26)
 				return Image();
-			uint32_t offset = readLE(&bytes[10]);
-			uint32_t headerSize = readLE(&bytes[14]);
-			int w = (int)readLE(&bytes[18]);
-			int h = (int)readLE(&bytes[22]);
-			int bits = bytes[28];
-			int step = bits / 8;
-			int rowBytes = (w * bits / 8 + 3) / 4 * 4;
+			size_t offset = readLE(&bytes[10]);
+			size_t headerSize = readLE(&bytes[14]);
+			int w = 0;
+			int h = 0;
+			int bits = 0;
+			uint32_t compression = 0;
+			size_t colors = 0;
+			size_t entry = 4;
+			if (headerSize == 12) {
+				w = (int)readLE16(&bytes[18]);
+				h = (int)(int16_t)readLE16(&bytes[20]);
+				bits = (int)readLE16(&bytes[24]);
+				entry = 3;
+			}
+			else {
+				if (bytes.size() < 54 || headerSize < 40)
+					return Image();
+				w = (int)readLE(&bytes[18]);
+				h = (int)readLE(&bytes[22]);
+				bits = (int)readLE16(&bytes[28]);
+				compression = readLE(&bytes[30]);
+				colors = readLE(&bytes[46]);
+			}
 			bool topDown = h < 0;
 			h = std::abs(h);
-			if ((bits != 8 && bits != 24 && bits != 32) || bytes.size() < offset + (size_t)rowBytes * h)
+			bool rle = (compression == 1 && bits == 8) || (compression == 2 && bits == 4);
+			bool plain = compression == 0 || compression == 3 || compression == 6;
+			bool bitsOk = bits == 1 || bits == 4 || bits == 8 || bits == 16 || bits == 24 || bits == 32;
+			if (!validSize(w, h) || !bitsOk || (!rle && !plain) || offset >= bytes.size())
 				return Image();
+			// 16 / 32 비트 색 마스크 (R, G, B). 기본값은 555 / 888
+			uint32_t masks[3] = { 0x7C00, 0x03E0, 0x001F };
+			if (bits == 32) {
+				masks[0] = 0xFF0000;
+				masks[1] = 0x00FF00;
+				masks[2] = 0x0000FF;
+			}
+			if ((compression == 3 || compression == 6) && bytes.size() >= 66) {
+				for (int c = 0; c < 3; ++c)
+					masks[c] = readLE(&bytes[54 + 4 * c]);
+			}
+			std::vector<uint8_t> palette(256 * 3, 0);
+			if (bits <= 8) {
+				size_t start = 14 + headerSize;
+				if (colors == 0 || colors > 256)
+					colors = (size_t)1 << bits;
+				for (size_t i = 0; i < colors && start + i * entry + 3 <= bytes.size(); ++i)
+					for (int c = 0; c < 3; ++c)
+						palette[i * 3 + c] = bytes[start + i * entry + 2 - c];
+			}
 			Image image(w, h, 3);
-			const uint8_t* palette = &bytes[14 + headerSize];
+			if (rle) {
+				std::vector<uint8_t> index((size_t)w * h, 0);
+				decodeRLE(bytes, offset, bits, w, h, index);
+				for (size_t i = 0; i < index.size(); ++i)
+					for (int c = 0; c < 3; ++c)
+						image.pixels[i * 3 + c] = palette[index[i] * 3 + c];
+				return image;
+			}
+			size_t rowBytes = ((size_t)w * bits + 31) / 32 * 4;
+			if (offset + rowBytes * h > bytes.size())
+				return Image();
 			for (int y = 0; y < h; ++y) {
 				int row = h - 1 - y;
 				if (topDown)
 					row = y;
 				const uint8_t* src = &bytes[offset + (size_t)row * rowBytes];
 				for (int x = 0; x < w; ++x) {
-					const uint8_t* bgr = src + x * step;
-					if (bits == 8)
-						bgr = palette + src[x] * 4;
-					for (int c = 0; c < 3; ++c)
-						image.at(x, y, c) = bgr[2 - c];
+					uint8_t* dst = &image.at(x, y, 0);
+					if (bits <= 8) {
+						size_t bit = (size_t)x * bits;
+						int index = (src[bit / 8] >> (8 - bits - (int)(bit % 8))) & ((1 << bits) - 1);
+						for (int c = 0; c < 3; ++c)
+							dst[c] = palette[index * 3 + c];
+					}
+					else if (bits == 24) {
+						for (int c = 0; c < 3; ++c)
+							dst[c] = src[x * 3 + 2 - c]; // BGR 순서
+					}
+					else {
+						uint32_t v = readLE16(src + x * 2);
+						if (bits == 32)
+							v = readLE(src + x * 4);
+						for (int c = 0; c < 3; ++c)
+							dst[c] = maskValue(v, masks[c]);
+					}
 				}
 			}
+			return image;
+		}
+		// PNG: 흑백 / RGB / 팔레트 / 알파, 1~16 비트, 인터레이스(Adam7) 모두 읽는다.
+		static Image decodePNG(const std::vector<uint8_t>& bytes) {
+			int w = 0;
+			int h = 0;
+			int depth = 0;
+			int colorType = -1;
+			int interlace = 0;
+			std::vector<uint8_t> palette;
+			std::vector<uint8_t> alpha;
+			std::vector<uint8_t> compressed;
+			size_t pos = 8;
+			while (pos + 12 <= bytes.size()) {
+				size_t length = readBE(&bytes[pos]);
+				if (pos + 12 + length > bytes.size())
+					break;
+				std::string type(bytes.begin() + pos + 4, bytes.begin() + pos + 8);
+				const uint8_t* data = &bytes[pos + 8];
+				if (type == "IHDR" && length >= 13) {
+					w = (int)readBE(data);
+					h = (int)readBE(data + 4);
+					depth = data[8];
+					colorType = data[9];
+					interlace = data[12];
+				}
+				else if (type == "PLTE") {
+					palette.assign(data, data + length);
+				}
+				else if (type == "tRNS") {
+					alpha.assign(data, data + length);
+				}
+				else if (type == "IDAT") {
+					compressed.insert(compressed.end(), data, data + length);
+				}
+				else if (type == "IEND") {
+					break;
+				}
+				pos += 12 + length;
+			}
+			int samples = 0;
+			if (colorType == 0 || colorType == 3)
+				samples = 1;
+			else if (colorType == 2)
+				samples = 3;
+			else if (colorType == 4)
+				samples = 2;
+			else if (colorType == 6)
+				samples = 4;
+			bool depthOk = depth == 1 || depth == 2 || depth == 4 || depth == 8 || depth == 16;
+			if (samples == 0 || !depthOk || !validSize(w, h) || compressed.size() < 2)
+				return Image();
+			std::vector<uint8_t> raw;
+			try {
+				raw = inflate(compressed.data(), compressed.size(), 2); // 앞 2바이트는 zlib 헤더
+			}
+			catch (const std::exception&) {
+				return Image();
+			}
+			// 흑백은 1채널, 알파가 있으면 RGBA, 나머지는 RGB
+			int channels = 3;
+			if (colorType == 0)
+				channels = 1;
+			if (colorType == 4 || colorType == 6 || (colorType != 0 && !alpha.empty()))
+				channels = 4;
+			Image image(w, h, channels);
+			int bitsPerPixel = samples * depth;
+			size_t bpp = (size_t)(std::max)(1, bitsPerPixel / 8);
+			int maxValue = (1 << depth) - 1;
+			auto value = [&](const uint8_t* row, int x, int s) {
+				size_t index = (size_t)x * samples + s;
+				if (depth == 16)
+					return (row[index * 2] << 8) | row[index * 2 + 1];
+				if (depth == 8)
+					return (int)row[index];
+				size_t bit = index * depth;
+				return (row[bit / 8] >> (8 - depth - (int)(bit % 8))) & maxValue;
+			};
+			auto to8 = [&](int v) {
+				if (depth == 16)
+					return (uint8_t)(v >> 8);
+				return (uint8_t)(v * 255 / maxValue);
+			};
+			auto store = [&](const uint8_t* row, int x, int px, int py) {
+				uint8_t* dst = &image.at(px, py, 0);
+				if (colorType == 3) {
+					size_t index = (size_t)value(row, x, 0);
+					for (int c = 0; c < 3; ++c) {
+						if (index * 3 + c < palette.size())
+							dst[c] = palette[index * 3 + c];
+					}
+					if (channels == 4) {
+						dst[3] = 255;
+						if (index < alpha.size())
+							dst[3] = alpha[index];
+					}
+					return;
+				}
+				if (colorType == 0 || colorType == 4) {
+					for (int c = 0; c < 3 && c < channels; ++c)
+						dst[c] = to8(value(row, x, 0));
+					if (colorType == 4)
+						dst[3] = to8(value(row, x, 1));
+					return;
+				}
+				for (int c = 0; c < 3; ++c)
+					dst[c] = to8(value(row, x, c));
+				if (colorType == 6) {
+					dst[3] = to8(value(row, x, 3));
+				}
+				else if (channels == 4) {
+					// tRNS 의 색과 정확히 같은 픽셀만 투명
+					dst[3] = 0;
+					for (int c = 0; c < 3; ++c) {
+						if (alpha.size() < 6 || value(row, x, c) != ((alpha[c * 2] << 8) | alpha[c * 2 + 1]))
+							dst[3] = 255;
+					}
+				}
+			};
+			// 인터레이스면 7 번에 나눠 저장되어 있다. (시작 위치, 간격)
+			const int startX[7] = { 0, 4, 0, 2, 0, 1, 0 };
+			const int startY[7] = { 0, 0, 4, 0, 2, 0, 1 };
+			const int stepX[7] = { 8, 8, 4, 4, 2, 2, 1 };
+			const int stepY[7] = { 8, 8, 8, 4, 4, 2, 2 };
+			int passes = 1;
+			if (interlace == 1)
+				passes = 7;
+			size_t offset = 0;
+			for (int p = 0; p < passes; ++p) {
+				int x0 = 0;
+				int y0 = 0;
+				int dx = 1;
+				int dy = 1;
+				if (interlace == 1) {
+					x0 = startX[p];
+					y0 = startY[p];
+					dx = stepX[p];
+					dy = stepY[p];
+				}
+				if (x0 >= w || y0 >= h)
+					continue;
+				int pw = (w - x0 + dx - 1) / dx;
+				int ph = (h - y0 + dy - 1) / dy;
+				size_t rowBytes = ((size_t)pw * bitsPerPixel + 7) / 8;
+				if (offset + (rowBytes + 1) * ph > raw.size())
+					return Image();
+				std::vector<uint8_t> prev(rowBytes, 0);
+				std::vector<uint8_t> cur(rowBytes, 0);
+				for (int y = 0; y < ph; ++y) {
+					int filter = raw[offset];
+					const uint8_t* src = &raw[offset + 1];
+					for (size_t i = 0; i < rowBytes; ++i) {
+						int a = 0;
+						int c = 0;
+						if (i >= bpp) {
+							a = cur[i - bpp];
+							c = prev[i - bpp];
+						}
+						int b = prev[i];
+						int predict = 0;
+						if (filter == 1) {
+							predict = a;
+						}
+						else if (filter == 2) {
+							predict = b;
+						}
+						else if (filter == 3) {
+							predict = (a + b) / 2;
+						}
+						else if (filter == 4) {
+							// Paeth: a, b, c 중 a + b - c 에 가장 가까운 값
+							int pa = std::abs(b - c);
+							int pb = std::abs(a - c);
+							int pc = std::abs(a + b - 2 * c);
+							if (pa <= pb && pa <= pc)
+								predict = a;
+							else if (pb <= pc)
+								predict = b;
+							else
+								predict = c;
+						}
+						cur[i] = (uint8_t)(src[i] + predict);
+					}
+					for (int x = 0; x < pw; ++x)
+						store(cur.data(), x, x0 + x * dx, y0 + y * dy);
+					std::swap(prev, cur);
+					offset += rowBytes + 1;
+				}
+			}
+			return image;
+		}
+		// RAW: 파일 이름의 "가로x세로" 또는 "가로x세로x채널" (예: cat_64x48x3.raw) 로 크기를 정한다.
+		// 이름에 크기가 없으면 정사각형으로 보고 RGB → 흑백 → RGBA 순으로 맞는 크기를 찾는다.
+		static Image decodeRaw(const std::vector<uint8_t>& bytes, const std::string& name) {
+			int w = 0;
+			int h = 0;
+			int c = 0;
+			for (size_t i = 0; i < name.size(); ++i) {
+				if (!std::isdigit((unsigned char)name[i]) || (i > 0 && std::isdigit((unsigned char)name[i - 1])))
+					continue;
+				std::vector<int> dims;
+				size_t j = i;
+				while (dims.size() < 3) {
+					int number = 0;
+					while (j < name.size() && std::isdigit((unsigned char)name[j])) {
+						if (number < 1000000)
+							number = number * 10 + (name[j] - '0');
+						++j;
+					}
+					dims.push_back(number);
+					if (j + 1 < name.size() && (name[j] == 'x' || name[j] == 'X') && std::isdigit((unsigned char)name[j + 1]))
+						++j;
+					else
+						break;
+				}
+				if (dims.size() >= 2) {
+					w = dims[0];
+					h = dims[1];
+					c = 0;
+					if (dims.size() == 3)
+						c = dims[2];
+				}
+				i = j;
+			}
+			if (validSize(w, h) && c == 0 && bytes.size() % ((size_t)w * h) == 0)
+				c = (int)(bytes.size() / ((size_t)w * h));
+			const int guesses[3] = { 3, 1, 4 };
+			for (int guess : guesses) {
+				if (w > 0 || bytes.empty())
+					break;
+				size_t side = (size_t)std::llround(std::sqrt((double)bytes.size() / guess));
+				if (side * side * guess == bytes.size()) {
+					w = (int)side;
+					h = (int)side;
+					c = guess;
+				}
+			}
+			if (!validSize(w, h) || c < 1 || c > 4 || bytes.size() < (size_t)w * h * c)
+				return Image();
+			Image image(w, h, c);
+			std::memcpy(image.pixels.data(), bytes.data(), image.pixels.size());
 			return image;
 		}
 		// PGM(P5, 흑백) / PPM(P6, 컬러)
@@ -2191,9 +2877,8 @@ namespace cnn {
 	};
 
 	inline bool isImageFile(const std::filesystem::path& path) {
-		std::string ext = path.extension().string();
-		std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char ch) { return (char)std::tolower(ch); });
-		const char* known[] = { ".bmp", ".pgm", ".ppm", ".jpg", ".jpeg", ".png", ".tga", ".gif" };
+		std::string ext = lowerExtension(path);
+		const char* known[] = { ".bmp", ".dib", ".png", ".pgm", ".ppm", ".raw", ".jpg", ".jpeg", ".tga", ".gif" };
 		return std::find(std::begin(known), std::end(known), ext) != std::end(known);
 	}
 

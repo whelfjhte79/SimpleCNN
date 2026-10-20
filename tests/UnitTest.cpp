@@ -3,7 +3,8 @@
 //  2. 합성곱 im2col / FFT / Direct 결과가 같은지
 //  3. 모든 레이어의 역전파가 수치 미분과 같은지 (gradient check)
 //  4. 저장 → 불러오기 후 예측이 같은지
-//  5. (GPU 가 있으면) CPU 와 CUDA 결과가 같은지
+//  5. PNG / BMP / RAW 를 제대로 읽고, 섞인 폴더로 학습되는지
+//  6. (GPU 가 있으면) CPU 와 CUDA 결과가 같은지
 #include "SimpleCNN.h"
 
 using namespace cnn;
@@ -251,6 +252,179 @@ static void testTrainSaveLoad() {
 	}
 }
 
+// 5x4 RGB, Adam7 인터레이스 + 동적 허프만 압축 PNG (Windows 의 PNG 인코더로 만든 파일)
+// 픽셀 (x, y) = (x * 50, y * 60, (x + y) * 20)
+static const uint8_t kInterlacedPng[] = {
+	0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x05,
+	0x00, 0x00, 0x00, 0x04, 0x08, 0x02, 0x00, 0x00, 0x01, 0xbe, 0x56, 0x52, 0x81, 0x00, 0x00, 0x00, 0x01, 0x73, 0x52, 0x47,
+	0x42, 0x00, 0xae, 0xce, 0x1c, 0xe9, 0x00, 0x00, 0x00, 0x04, 0x67, 0x41, 0x4d, 0x41, 0x00, 0x00, 0xb1, 0x8f, 0x0b, 0xfc,
+	0x61, 0x05, 0x00, 0x00, 0x00, 0x09, 0x70, 0x48, 0x59, 0x73, 0x00, 0x00, 0x0e, 0xc3, 0x00, 0x00, 0x0e, 0xc3, 0x01, 0xc7,
+	0x6f, 0xa8, 0x64, 0x00, 0x00, 0x00, 0x36, 0x49, 0x44, 0x41, 0x54, 0x18, 0x57, 0x45, 0xc8, 0x31, 0x0d, 0x80, 0x40, 0x10,
+	0x04, 0xc0, 0xb9, 0x04, 0x09, 0x27, 0x62, 0xeb, 0xaf, 0x11, 0x81, 0x88, 0x13, 0xf1, 0x12, 0x91, 0x45, 0x41, 0x02, 0xc9,
+	0x54, 0x03, 0x6e, 0x97, 0x91, 0xb2, 0x33, 0x32, 0x52, 0x4b, 0x8f, 0x1c, 0x76, 0x48, 0x39, 0x7b, 0xf9, 0xbd, 0xdd, 0x9f,
+	0x07, 0x29, 0xc3, 0x07, 0x5a, 0xe8, 0x7d, 0x5b, 0xf4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60,
+	0x82
+};
+
+static void writeBytes(const std::string& path, const std::vector<uint8_t>& bytes) {
+	std::ofstream file(path, std::ios::binary);
+	file.write(reinterpret_cast<const char*>(bytes.data()), (std::streamsize)bytes.size());
+}
+
+static bool sameImage(const Image& a, const Image& b) {
+	return a.width == b.width && a.height == b.height && a.channels == b.channels && a.pixels == b.pixels;
+}
+
+static Image patternImage(int w, int h, int c, int seed) {
+	Image image(w, h, c);
+	for (size_t i = 0; i < image.pixels.size(); ++i)
+		image.pixels[i] = (uint8_t)((i * 37 + seed * 11) % 256);
+	return image;
+}
+
+// BMP 파일을 직접 만든다. extra 는 헤더 뒤 (팔레트나 색 마스크), data 는 픽셀
+static std::vector<uint8_t> makeBMP(int w, int h, int bits, uint32_t compression, uint32_t colors, const std::vector<uint8_t>& extra, const std::vector<uint8_t>& data) {
+	std::vector<uint8_t> out(54, 0);
+	auto put = [&](size_t at, uint32_t v, int n) {
+		for (int i = 0; i < n; ++i)
+			out[at + i] = (uint8_t)(v >> (8 * i));
+	};
+	uint32_t offset = 54 + (uint32_t)extra.size();
+	out[0] = 'B';
+	out[1] = 'M';
+	put(2, offset + (uint32_t)data.size(), 4);
+	put(10, offset, 4);
+	put(14, 40, 4);
+	put(18, (uint32_t)w, 4);
+	put(22, (uint32_t)h, 4);
+	put(26, 1, 2);
+	put(28, (uint32_t)bits, 2);
+	put(30, compression, 4);
+	put(34, (uint32_t)data.size(), 4);
+	put(46, colors, 4);
+	out.insert(out.end(), extra.begin(), extra.end());
+	out.insert(out.end(), data.begin(), data.end());
+	return out;
+}
+
+static bool pixelIs(const Image& image, int x, int y, int r, int g, int b) {
+	return image.at(x, y, 0) == r && image.at(x, y, 1) == g && image.at(x, y, 2) == b;
+}
+
+static void testImageFormats() {
+	std::printf("이미지 형식 (PNG / BMP / RAW)\n");
+	writeBytes("unit_test.png", std::vector<uint8_t>(std::begin(kInterlacedPng), std::end(kInterlacedPng)));
+	Image png = Image::load("unit_test.png");
+	bool ok = png.width == 5 && png.height == 4 && png.channels == 3;
+	for (int y = 0; ok && y < 4; ++y)
+		for (int x = 0; x < 5; ++x)
+			ok = ok && pixelIs(png, x, y, x * 50, y * 60, (x + y) * 20);
+	expect(ok, "압축 + 인터레이스 PNG 를 잘못 읽음");
+
+	const int channelList[] = { 1, 3, 4 };
+	for (int c : channelList) {
+		Image image = patternImage(13, 7, c, c);
+		image.savePNG("unit_test.png");
+		expect(sameImage(Image::load("unit_test.png"), image), "PNG " + std::to_string(c) + " 채널 저장 → 읽기 결과가 다름");
+	}
+	std::remove("unit_test.png");
+
+	Image rgb = patternImage(7, 5, 3, 2);
+	rgb.saveBMP("unit_test.bmp");
+	expect(sameImage(Image::load("unit_test.bmp"), rgb), "24비트 BMP 저장 → 읽기 결과가 다름");
+
+	// 4비트 팔레트 3x2. 팔레트 i = (r, g, b) = (i * 15, i * 20, i * 10), 픽셀 (x, y) 의 번호 = x + y * 3
+	std::vector<uint8_t> palette;
+	for (int i = 0; i < 16; ++i) {
+		uint8_t entry[4] = { (uint8_t)(i * 10), (uint8_t)(i * 20), (uint8_t)(i * 15), 0 };
+		palette.insert(palette.end(), entry, entry + 4);
+	}
+	std::vector<uint8_t> nibbles = { 0x34, 0x50, 0, 0, 0x01, 0x20, 0, 0 }; // 아래 줄부터
+	writeBytes("unit_test.bmp", makeBMP(3, 2, 4, 0, 16, palette, nibbles));
+	Image bmp4 = Image::load("unit_test.bmp");
+	ok = bmp4.width == 3 && bmp4.height == 2;
+	for (int i = 0; ok && i < 6; ++i)
+		ok = pixelIs(bmp4, i % 3, i / 3, i * 15, i * 20, i * 10);
+	expect(ok, "4비트 팔레트 BMP 를 잘못 읽음");
+
+	// RLE8 4x2. 아래 줄은 2 번 색 4개, 윗줄은 0 1 2 3 을 그대로 저장
+	std::vector<uint8_t> rle = { 4, 2, 0, 0, 0, 4, 0, 1, 2, 3, 0, 1 };
+	writeBytes("unit_test.bmp", makeBMP(4, 2, 8, 1, 16, palette, rle));
+	Image bmpRle = Image::load("unit_test.bmp");
+	ok = bmpRle.width == 4 && bmpRle.height == 2;
+	for (int x = 0; ok && x < 4; ++x)
+		ok = pixelIs(bmpRle, x, 0, x * 15, x * 20, x * 10) && pixelIs(bmpRle, x, 1, 30, 40, 20);
+	expect(ok, "RLE8 BMP 를 잘못 읽음");
+
+	// 16비트 565 비트필드 2x2: 빨강 초록 / 파랑 흰색
+	std::vector<uint8_t> masks = { 0x00, 0xF8, 0, 0, 0xE0, 0x07, 0, 0, 0x1F, 0x00, 0, 0 };
+	std::vector<uint8_t> words = { 0x1F, 0x00, 0xFF, 0xFF, 0x00, 0xF8, 0xE0, 0x07 };
+	writeBytes("unit_test.bmp", makeBMP(2, 2, 16, 3, 0, masks, words));
+	Image bmp16 = Image::load("unit_test.bmp");
+	ok = bmp16.width == 2 && bmp16.height == 2 && pixelIs(bmp16, 0, 0, 255, 0, 0) && pixelIs(bmp16, 1, 0, 0, 255, 0) && pixelIs(bmp16, 0, 1, 0, 0, 255) && pixelIs(bmp16, 1, 1, 255, 255, 255);
+	expect(ok, "16비트 비트필드 BMP 를 잘못 읽음");
+	std::remove("unit_test.bmp");
+
+	Image raw = patternImage(9, 6, 3, 5);
+	raw.saveRaw("unit_test_9x6x3.raw");
+	expect(sameImage(Image::load("unit_test_9x6x3.raw"), raw), "이름에 크기가 있는 RAW 를 잘못 읽음");
+	std::remove("unit_test_9x6x3.raw");
+	Image square = patternImage(8, 8, 3, 6);
+	square.saveRaw("unit_test_square.raw");
+	expect(sameImage(Image::load("unit_test_square.raw"), square), "크기 없는 정사각형 RAW 를 잘못 읽음");
+	std::remove("unit_test_square.raw");
+	std::printf("  압축/인터레이스 PNG, PNG 저장, BMP 4/8(RLE)/16/24비트, RAW\n");
+}
+
+// 클래스별 폴더에 크기가 제각각인 RGB 이미지를 PNG / BMP / RAW 로 섞어 두고 학습되는지 본다.
+// 클래스는 가장 강한 색 (빨강 / 초록 / 파랑) 이라 채널 순서가 틀리면 맞히지 못한다.
+static void testFolderTraining() {
+	std::printf("폴더 데이터셋 학습 (RGB PNG / BMP / RAW 섞어서)\n");
+	std::filesystem::path root = "unit_test_images";
+	std::error_code ec;
+	std::filesystem::remove_all(root, ec);
+	const char* names[] = { "blue", "green", "red" };
+	std::mt19937 rng(11);
+	std::uniform_int_distribution<int> noise(0, 90);
+	for (int label = 0; label < 3; ++label) {
+		std::filesystem::create_directories(root / names[label], ec);
+		for (int i = 0; i < 30; ++i) {
+			int size = 12 + (i % 3) * 4;
+			Image image(size, size, 3);
+			for (int y = 0; y < size; ++y) {
+				for (int x = 0; x < size; ++x) {
+					for (int c = 0; c < 3; ++c) {
+						int v = noise(rng);
+						if (c == 2 - label)
+							v += 150;
+						image.at(x, y, c) = (uint8_t)v;
+					}
+				}
+			}
+			std::string base = pathString(root / names[label] / ("img" + std::to_string(i)));
+			if (i % 3 == 0)
+				image.savePNG(base + ".png");
+			else if (i % 3 == 1)
+				image.saveBMP(base + ".bmp");
+			else
+				image.saveRaw(base + "_" + std::to_string(size) + "x" + std::to_string(size) + "x3.raw");
+		}
+	}
+	Dataset data = Dataset::loadFolder(pathString(root), 16, 16, 3);
+	expect(data.size() == 90 && data.classNames.size() == 3, "폴더에서 읽은 이미지 수 " + std::to_string(data.size()));
+	CNN model;
+	model.setVerbose(false);
+	model.add(new Conv(3, 8, 1, 1, ACTIVATION::ReLU));
+	model.add(new Pooling(POOLING::Max));
+	model.add(new FullyConnected(3, ACTIVATION::Softmax));
+	model.compile(OPTIMIZER::Adam, LOSS::CategoricalCrossentropy);
+	model.fit(data, 5, 10);
+	float acc = model.evaluate(data);
+	expect(acc > 0.9f, "폴더 데이터 학습 정확도 낮음 " + std::to_string(acc));
+	std::printf("  %zu 장, 클래스 %zu 개, 정확도 %.2f%%\n", data.size(), data.classNames.size(), acc * 100.0f);
+	std::filesystem::remove_all(root, ec);
+}
+
 // GPU 가 있으면 같은 시드로 CPU 와 CUDA 를 돌려 결과를 비교한다.
 static void testCudaMatchesCpu() {
 	std::printf("CPU vs CUDA\n");
@@ -288,6 +462,8 @@ int main() {
 	testConvAlgorithms();
 	testGradients();
 	testTrainSaveLoad();
+	testImageFormats();
+	testFolderTraining();
 	testCudaMatchesCpu();
 	std::printf("\n%d 개 검사 중 %d 개 실패\n", checks, failures);
 	if (failures > 0)

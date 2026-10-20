@@ -47,7 +47,7 @@ int main() {
 | 프로젝트 | 하는 일 |
 |---|---|
 | `MnistTest` (시작 프로젝트) | 실제 데이터로 전체 흐름 테스트. 디버깅 인자: Debug=`cuda --epochs 1 --train 10000`, Release=`cuda` |
-| `UnitTest` | 역전파 수치 검증, im2col/FFT 결과 비교, 저장/불러오기, CPU↔CUDA 결과 비교 |
+| `UnitTest` | 역전파 수치 검증, im2col/FFT 결과 비교, 저장/불러오기, PNG/BMP/RAW 읽기와 폴더 학습, CPU↔CUDA 결과 비교 |
 
 평소처럼 중단점을 걸고 디버깅하면 됩니다. 인자는 *프로젝트 속성 → 디버깅 → 명령 인수* 에서 바꿉니다.
 
@@ -56,7 +56,11 @@ MnistTest cuda                         GPU 로 학습
 MnistTest cpu --epochs 1 --train 10000 CPU 로 1만 장만
 MnistTest cuda --image my_digit.png    학습 후 내가 그린 숫자 예측
 MnistTest cuda --algo fft              합성곱 방식 고정 (auto / im2col / fft)
+MnistTest cuda --folder photos         MNIST 대신 내 이미지 폴더로 학습 (photos/클래스이름/*.png, *.bmp, *.raw)
+MnistTest cuda --folder photos --size 64 --channels 3 --epochs 20 --image test.png
 ```
+
+`--folder` 는 이미지를 `--size` 크기(기본 32)로 맞춰 읽고, 80% 로 학습해 나머지 20% 로 평가한 뒤 `data/folder_model.scnn` 에 저장합니다.
 
 Linux / macOS 는 CMake 를 씁니다.
 ```
@@ -92,8 +96,17 @@ Dataset e = Dataset::fromVectors(v4d, labels);                     // 예전 V4D
 auto [train, test] = a.split(0.2f);                                // 80% 학습 / 20% 테스트
 ```
 
-이미지 형식은 BMP, PGM, PPM 을 기본으로 읽습니다.
-**JPG / PNG** 가 필요하면 [stb_image.h](https://github.com/nothings/stb/blob/master/stb_image.h) (퍼블릭 도메인 파일 하나) 를 `SimpleCNN.h` 옆에 두기만 하면 자동으로 인식합니다.
+아래 이미지 형식은 외부 라이브러리 없이 직접 읽습니다. 크기와 채널이 제각각이어도 `loadFolder` 에 준 크기로 맞춥니다.
+
+| 형식 | 지원 범위 |
+|---|---|
+| PNG | 흑백 / RGB / 팔레트 / 알파, 1·2·4·8·16 비트, 인터레이스 (inflate 직접 구현) |
+| BMP | 1·4·8 비트 팔레트 (RLE 압축 포함), 16·24·32 비트 (비트필드 포함), OS/2 헤더 |
+| PGM / PPM | P5 (흑백), P6 (컬러) |
+| RAW | 헤더 없는 8비트 HWC (RGB 순서). 파일 이름에 크기: `cat_64x48x3.raw`. 이름에 크기가 없으면 정사각형으로 추정 |
+
+저장은 `image.savePNG()`, `image.saveBMP()`, `image.saveRaw()` 로 합니다.
+**JPG / GIF / TGA** 가 필요하면 [stb_image.h](https://github.com/nothings/stb/blob/master/stb_image.h) (퍼블릭 도메인 파일 하나) 를 `SimpleCNN.h` 옆에 두기만 하면 자동으로 인식합니다.
 
 예전 README 방식도 그대로 동작합니다.
 ```cpp
@@ -117,7 +130,7 @@ cnn->accuracy();
 | 4. 연산 | GEMM, im2col, FFT 합성곱, 풀링, 활성화 (`cpu::` / `gpu::`) |
 | 5. 레이어 | Conv, Pooling, Padding, Activation, Flatten, FullyConnected |
 | 6. 옵티마이저 | SGD ~ Nadam |
-| 7. 이미지 / 데이터셋 | BMP/PGM/PPM 읽기, MNIST, 폴더 데이터셋 |
+| 7. 이미지 / 데이터셋 | inflate, PNG/BMP/PGM/PPM/RAW 읽기·저장, MNIST, 폴더 데이터셋 |
 | 8. CNN 모델 | add → compile → fit → predict / save / load |
 
 모든 블럭(레이어)은 같은 인터페이스 3개만 가집니다.
