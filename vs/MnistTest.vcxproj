@@ -51,16 +51,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\SimpleCNN.h" />
-    <ClInclude Include="..\simplecnn\Core.h" />
-    <ClInclude Include="..\simplecnn\Cuda.h" />
-    <ClInclude Include="..\simplecnn\CudaKernels.h" />
-    <ClInclude Include="..\simplecnn\Tensor.h" />
-    <ClInclude Include="..\simplecnn\Ops.h" />
-    <ClInclude Include="..\simplecnn\Layers.h" />
-    <ClInclude Include="..\simplecnn\Optimizer.h" />
-    <ClInclude Include="..\simplecnn\Image.h" />
-    <ClInclude Include="..\simplecnn\Dataset.h" />
-    <ClInclude Include="..\examples\Download.h" />
+    <None Include="..\SimpleCNN.cuh" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

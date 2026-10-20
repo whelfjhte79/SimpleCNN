@@ -1,8 +1,14 @@
 # SimpleCNN
 
 **레이어만 쌓으면 바로 학습되는 C++ CNN 라이브러리.**
-`#include "SimpleCNN.h"` 한 줄이면 끝이고, 외부 라이브러리(OpenCV, CUDA SDK 링크 등)가 필요 없습니다.
-같은 실행 파일이 GPU 가 있으면 CUDA 로, 없으면 CPU 로 돕니다.
+
+| 파일 | 내용 |
+|---|---|
+| `SimpleCNN.h` | 라이브러리 전체. **이것만 include 하면 끝** |
+| `SimpleCNN.cuh` | CUDA 커널. SimpleCNN.h 가 알아서 읽어 들이므로 따로 신경 쓸 필요 없음 |
+
+두 파일을 프로젝트 폴더에 복사하고 `#include "SimpleCNN.h"` 한 줄이면 됩니다.
+외부 라이브러리(OpenCV, CUDA 링크, 빌드 설정)가 필요 없고, 같은 실행 파일이 GPU 가 있으면 CUDA 로, 없으면 CPU 로 돕니다.
 
 ```cpp
 #include "SimpleCNN.h"
@@ -22,7 +28,7 @@ int main() {
     model.compile(OPTIMIZER::Adam, LOSS::CategoricalCrossentropy);
     model.fit(train, 5, 64);                       // epochs, batch size
 
-    int label = model.predict("cat.jpg");          // JPG / PNG / BMP 바로 예측
+    int label = model.predict("cat.bmp");          // 이미지 파일로 바로 예측
     model.save("model.scnn");
 }
 ```
@@ -78,13 +84,16 @@ cmake -B build && cmake --build build -j
 ## 3. 데이터 넣기
 
 ```cpp
-Dataset a = Dataset::loadFolder("images", 64, 64, 3);              // images/고양이/*.jpg, images/강아지/*.jpg
+Dataset a = Dataset::loadFolder("images", 64, 64, 3);              // images/고양이/*.bmp, images/강아지/*.bmp
 Dataset b = Dataset::loadFolder("huge", 224, 224, 3, true);        // streaming: 파일 경로만 들고 학습 중에 읽음
 Dataset c = Dataset::loadFiles("imgs", "labels.csv", 64, 64);      // 이름순 이미지 + 라벨 CSV
 Dataset d = Dataset::loadMNIST("train-images-idx3-ubyte", "train-labels-idx1-ubyte");
 Dataset e = Dataset::fromVectors(v4d, labels);                     // 예전 V4D 방식 그대로
 auto [train, test] = a.split(0.2f);                                // 80% 학습 / 20% 테스트
 ```
+
+이미지 형식은 BMP, PGM, PPM 을 기본으로 읽습니다.
+**JPG / PNG** 가 필요하면 [stb_image.h](https://github.com/nothings/stb/blob/master/stb_image.h) (퍼블릭 도메인 파일 하나) 를 `SimpleCNN.h` 옆에 두기만 하면 자동으로 인식합니다.
 
 예전 README 방식도 그대로 동작합니다.
 ```cpp
@@ -98,22 +107,20 @@ cnn->accuracy();
 
 ## 4. 내부 구조
 
-```
-SimpleCNN.h            ← 이것만 include. CNN 클래스 (add / compile / fit / predict / save / load)
-simplecnn/
-  Core.h               enum, Shape(모양), parallelFor(멀티코어)
-  Tensor.h             연속 메모리 텐서 (CPU 정렬 메모리 / GPU 메모리 풀)
-  Ops.h                연산: GEMM, im2col, FFT 합성곱, 풀링, 활성화 (cpu:: / gpu::)
-  Layers.h             블럭들: Conv, Pooling, Padding, Activation, Flatten, FullyConnected
-  Optimizer.h          SGD ~ Nadam
-  Cuda.h               GPU 찾기, 커널 컴파일(NVRTC), 메모리 풀, cuBLAS 연결
-  CudaKernels.h        CUDA 커널 소스
-  Image.h, Dataset.h   이미지 읽기(stb_image), 데이터셋
-examples/MnistTest.cpp 실전 테스트
-tests/UnitTest.cpp     정확성 검사
-```
+`SimpleCNN.h` 는 위에서 아래로 읽으면 전체가 이해되도록 8개 구역으로 되어 있습니다.
 
-모든 블럭은 같은 모양의 인터페이스 3개만 가집니다.
+| 구역 | 내용 |
+|---|---|
+| 1. 기본 정의 | enum, Shape(텐서 모양), parallelFor(멀티코어 반복) |
+| 2. GPU 런타임 | CUDA 드라이버 / NVRTC / cuBLAS 를 실행 중에 연결, GPU 메모리 풀 |
+| 3. Tensor | 연속 메모리 한 덩어리 (CPU 또는 GPU) |
+| 4. 연산 | GEMM, im2col, FFT 합성곱, 풀링, 활성화 (`cpu::` / `gpu::`) |
+| 5. 레이어 | Conv, Pooling, Padding, Activation, Flatten, FullyConnected |
+| 6. 옵티마이저 | SGD ~ Nadam |
+| 7. 이미지 / 데이터셋 | BMP/PGM/PPM 읽기, MNIST, 폴더 데이터셋 |
+| 8. CNN 모델 | add → compile → fit → predict / save / load |
+
+모든 블럭(레이어)은 같은 인터페이스 3개만 가집니다.
 
 | 함수 | 역할 |
 |---|---|
@@ -166,16 +173,16 @@ GPU 는 im2col + cuBLAS 를 사용합니다. 역전파는 모든 경우 im2col +
 
 ## 5. 검증 결과
 
-- `UnitTest`: GEMM 4가지 전치 조합, im2col = FFT = Direct, 모든 레이어/활성화 역전파 수치 미분 일치, 저장/불러오기 일치 (35개 검사 통과)
-- CUDA 커널: NVRTC 로 sm_75 / sm_86 / sm_120 / compute_52 컴파일 확인, 커널 에뮬레이션으로 CPU 결과와 손실값 일치 확인
-- `MnistTest` (CPU 4코어, 1 epoch, 6만 장): 테스트 정확도 **98.23%**, 학습 34초, 메모리 최대 14.5MB
+- `UnitTest`: GEMM 4가지 전치 조합, im2col = FFT = Direct, 모든 레이어/활성화 역전파 수치 미분 일치, 저장/불러오기 일치 (35개 검사 통과, AddressSanitizer/UBSan 오류 0)
+- CUDA 커널: NVRTC 로 sm_75 / sm_86 / sm_120 / compute_52 컴파일 확인, 커널 에뮬레이션으로 7가지 구성에서 CPU 와 손실값 일치 확인
+- `MnistTest` (CPU 4코어, 1 epoch, 6만 장): 테스트 정확도 **98.13%**, 메모리 최대 14.5MB
 
 ## 요구 사항
 
 - C++17 컴파일러 (Visual Studio 2019 이상, GCC 9+, Clang 10+)
 - GPU 사용 시: NVIDIA 그래픽 드라이버 + [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) (버전 무관, 11.2 이상 권장)
-- OpenCV 불필요 (이미지 읽기는 포함된 `stb_image` 사용)
+- OpenCV 불필요
 
 ## License
 
-MIT License. `simplecnn/third_party/stb_image.h` 는 public domain (Sean Barrett).
+MIT License

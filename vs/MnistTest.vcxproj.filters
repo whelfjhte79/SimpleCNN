@@ -4,9 +4,6 @@
     <Filter Include="SimpleCNN">
       <UniqueIdentifier>{A0FA54CA-0F05-5B47-A089-800DBC965090}</UniqueIdentifier>
     </Filter>
-    <Filter Include="SimpleCNN\simplecnn">
-      <UniqueIdentifier>{B51DEFB1-6ED9-5492-9D5D-C8F4CA7E7726}</UniqueIdentifier>
-    </Filter>
     <Filter Include="examples">
       <UniqueIdentifier>{CECB43F9-EDDD-5E99-AEBC-EFEDFE46028A}</UniqueIdentifier>
     </Filter>
@@ -20,35 +17,10 @@
     <ClInclude Include="..\SimpleCNN.h">
       <Filter>SimpleCNN</Filter>
     </ClInclude>
-    <ClInclude Include="..\simplecnn\Core.h">
-      <Filter>SimpleCNN\simplecnn</Filter>
-    </ClInclude>
-    <ClInclude Include="..\simplecnn\Cuda.h">
-      <Filter>SimpleCNN\simplecnn</Filter>
-    </ClInclude>
-    <ClInclude Include="..\simplecnn\CudaKernels.h">
-      <Filter>SimpleCNN\simplecnn</Filter>
-    </ClInclude>
-    <ClInclude Include="..\simplecnn\Tensor.h">
-      <Filter>SimpleCNN\simplecnn</Filter>
-    </ClInclude>
-    <ClInclude Include="..\simplecnn\Ops.h">
-      <Filter>SimpleCNN\simplecnn</Filter>
-    </ClInclude>
-    <ClInclude Include="..\simplecnn\Layers.h">
-      <Filter>SimpleCNN\simplecnn</Filter>
-    </ClInclude>
-    <ClInclude Include="..\simplecnn\Optimizer.h">
-      <Filter>SimpleCNN\simplecnn</Filter>
-    </ClInclude>
-    <ClInclude Include="..\simplecnn\Image.h">
-      <Filter>SimpleCNN\simplecnn</Filter>
-    </ClInclude>
-    <ClInclude Include="..\simplecnn\Dataset.h">
-      <Filter>SimpleCNN\simplecnn</Filter>
-    </ClInclude>
-    <ClInclude Include="..\examples\Download.h">
-      <Filter>examples</Filter>
-    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\SimpleCNN.cuh">
+      <Filter>SimpleCNN</Filter>
+    </None>
   </ItemGroup>
 </Project>
