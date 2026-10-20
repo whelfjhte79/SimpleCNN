@@ -1,0 +1,7 @@
+bin/
+build/
+data/
+.vs/
+x64/
+*.user
+*.scnn

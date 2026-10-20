@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="SimpleCNN">
+      <UniqueIdentifier>{2313E1AB-8925-56E7-9857-02F65C63FF18}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="SimpleCNN\simplecnn">
+      <UniqueIdentifier>{25F143C9-A563-5072-A07E-3B10E2464E55}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="tests">
+      <UniqueIdentifier>{EFB45EED-7F87-5EDB-846F-261180C84358}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\tests\UnitTest.cpp">
+      <Filter>tests</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\SimpleCNN.h">
+      <Filter>SimpleCNN</Filter>
+    </ClInclude>
+    <ClInclude Include="..\simplecnn\Core.h">
+      <Filter>SimpleCNN\simplecnn</Filter>
+    </ClInclude>
+    <ClInclude Include="..\simplecnn\Cuda.h">
+      <Filter>SimpleCNN\simplecnn</Filter>
+    </ClInclude>
+    <ClInclude Include="..\simplecnn\CudaKernels.h">
+      <Filter>SimpleCNN\simplecnn</Filter>
+    </ClInclude>
+    <ClInclude Include="..\simplecnn\Tensor.h">
+      <Filter>SimpleCNN\simplecnn</Filter>
+    </ClInclude>
+    <ClInclude Include="..\simplecnn\Ops.h">
+      <Filter>SimpleCNN\simplecnn</Filter>
+    </ClInclude>
+    <ClInclude Include="..\simplecnn\Layers.h">
+      <Filter>SimpleCNN\simplecnn</Filter>
+    </ClInclude>
+    <ClInclude Include="..\simplecnn\Optimizer.h">
+      <Filter>SimpleCNN\simplecnn</Filter>
+    </ClInclude>
+    <ClInclude Include="..\simplecnn\Image.h">
+      <Filter>SimpleCNN\simplecnn</Filter>
+    </ClInclude>
+    <ClInclude Include="..\simplecnn\Dataset.h">
+      <Filter>SimpleCNN\simplecnn</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>
